@@ -16,15 +16,24 @@
 
   let pin = null;
 
+  /* 구글 쪽 전달(리다이렉트)이 가끔 실제 응답 대신 상태 페이지({ok,app})를 돌려줄 때가 있다.
+   * 저장은 now, 읽기는 rows 가 있어야 진짜 응답으로 보고, 아니면 3번까지 다시 보낸다 (같은 내용 재전송이라 안전). */
+  const looksDone = (action, j) => action === 'batch' ? typeof j.now === 'number' : Array.isArray(j.rows);
   async function call(body) {
-    let r;
-    try {
-      r = await fetch(CFG.apiUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pin }), redirect: 'follow' });
-    } catch (e) { throw { code: 'network', message: '인터넷 연결을 확인해 주세요.' } }
-    if (!r.ok) throw { code: 'network', message: 'HTTP ' + r.status };
-    let j; try { j = await r.json() } catch { throw { code: 'network', message: '응답을 읽지 못했습니다.' } }
-    if (!j.ok) throw { code: j.error === 'pin' ? 'pin' : 'server', message: j.error || '오류' };
-    return j;
+    let last = { code: 'network', message: '응답을 받지 못했습니다.' };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) await new Promise(r => setTimeout(r, 600 * attempt));
+      let r;
+      try {
+        r = await fetch(CFG.apiUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pin }), redirect: 'follow' });
+      } catch (e) { last = { code: 'network', message: '인터넷 연결을 확인해 주세요.' }; continue }
+      if (!r.ok) { last = { code: 'network', message: 'HTTP ' + r.status }; continue }
+      let j; try { j = await r.json() } catch { last = { code: 'network', message: '응답을 읽지 못했습니다.' }; continue }
+      if (!j.ok) throw { code: j.error === 'pin' ? 'pin' : 'server', message: j.error || '오류' };
+      if (looksDone(body.action, j)) return j;
+      last = { code: 'network', message: '구글 응답이 올바르지 않습니다.' };
+    }
+    throw last;
   }
 
   /* ---------- PIN 입력 화면 ---------- */
