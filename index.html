@@ -186,7 +186,10 @@ body.no-co .tabs,body.no-co .coswitch,body.no-co [id^="tab-"]{display:none!impor
 body:not(.no-co) #home{display:none}
 /* 부자재 관리 */
 /* 재고장 */
-.lgin{width:96px}
+.lgin{width:72px;padding:0 6px}
+#lgTable td.lgname{white-space:normal;min-width:140px;max-width:220px;line-height:1.3}
+#lgTable td.lgname .note{font-size:11px;line-height:1.3}
+#lgTable th,#lgTable td{padding:8px 6px}
 .lgin.bad{background:var(--bad-soft);border-color:var(--bad);color:var(--bad);font-weight:700}
 .lgin.ok{background:var(--ok-soft);border-color:var(--ok)}
 tr.lg-bad td{background:var(--bad-soft)}
@@ -415,7 +418,7 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
     </div>
     <div class="psum" id="lgSum"></div>
     <div class="sheet">
-      <h2>재고장 <span class="sub">배송·이동반출이 있는 상품만 · 실수량을 넣으면 WMS 재고와 비교</span>
+      <h2>재고장 <span class="sub">배송·이동반출이 있는 상품만 · 실수량 = 박스 × 입수 + 낱개</span>
         <span class="right"><label class="row" style="font-size:12.5px;font-weight:600;color:var(--muted)"><input type="checkbox" id="lgAll"> 전체 상품 보기</label></span></h2>
       <div class="tablewrap"><table id="lgTable"></table></div>
       <div class="body"><p class="note" style="margin:0" id="lgNote">사무실 PC의 <b>아마레 도우미 → 재고장</b>에서 <b>[기간별 수불현황 로드]</b>를 누르면 그날 WMS 재고가 여기에 들어옵니다. 실수량이 WMS 재고수량과 다르면 칸이 <b style="color:var(--bad)">빨간색</b>으로 표시됩니다.</p></div>
@@ -485,10 +488,15 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
         <div class="body">
           <p class="note" style="margin:0">품목은 <b>세트</b>와 <b>단품</b>으로 나눕니다. 가공작업에서 <b>세트</b>를 고르면 세트 품목이, <b>기타·해체</b>를 고르면 세트·단품 모든 품목이, 그 밖의 작업(스티커·QR·포장·밴딩·실링 등)은 단품 품목이 상품 선택 목록에 나옵니다. 품목은 업체마다 따로 관리됩니다.<br>
           맨 위 파란 줄에 상품코드·상품명·구분을 넣고 <b>✓</b>를 누르면 추가됩니다. 목록의 품목을 고치면 줄이 노랗게 바뀌고, <b>✓</b>를 누르면 저장됩니다. <b>×</b>를 두 번 누르면 삭제됩니다.<br>
-          엑셀로 불러올 때는 첫 줄에 <b>상품코드</b>, <b>상품명</b>, <b>구분</b>(세트/단품) 제목이 있으면 됩니다. 현황 파일의 ITEM MASTER 시트(SKU, Description)도 읽을 수 있습니다.</p>
+          엑셀로 불러올 때는 첫 줄에 <b>상품코드</b>, <b>상품명</b>, <b>구분</b>(세트/단품) 제목이 있으면 됩니다. 현황 파일의 ITEM MASTER 시트(SKU, Description)도 읽을 수 있습니다.<br>
+          <b>박스 입수</b>(1박스에 들어가는 개수)를 넣어 두면 재고장에서 <b>박스 수 + 낱개</b>로 실수량을 넣을 수 있습니다. 엑셀의 <b>박스입수</b>(또는 BOX) 열로도 올라갑니다.</p>
           <div id="importBox" hidden></div>
           <div class="tablewrap"><table id="itemMasterTable"></table></div>
         </div>
+      </div>
+      <div class="sheet">
+        <h2>재고장 제외 상품 <span class="sub">미출고 코드 등 재고장에 안 보이게 뺀 상품</span></h2>
+        <div class="body"><div id="lgExBox"></div></div>
       </div>
     </div>
   </section>
@@ -1012,18 +1020,21 @@ function renderSettings(){
   $('#tplBtn').hidden=!dl;
   const tb=$('#itemMasterTable');
   if(tb.querySelector('tr.dirty')||tb.contains(document.activeElement))return;
-  tb.innerHTML=`<thead><tr><th>상품코드</th><th>상품명</th><th>구분</th><th></th></tr></thead><tbody>
+  renderLgExclude();
+  tb.innerHTML=`<thead><tr><th>상품코드</th><th>상품명</th><th>구분</th><th class="n">박스 입수</th><th></th></tr></thead><tbody>
     <tr class="newrow" data-new><td><input class="in mono" data-k="code" id="imNewC" placeholder="새 상품코드" aria-label="새 상품코드"></td>
       <td style="min-width:220px;width:100%"><input class="in" data-k="name" id="imNewN" placeholder="상품명" aria-label="새 상품명"></td>
       <td><select class="in" data-k="kind" id="imNewT" aria-label="새 품목 구분">${kindOpts('세트')}</select></td>
+      <td><input class="in num" data-k="boxQty" id="imNewB" type="number" inputmode="numeric" placeholder="1박스 개수" aria-label="새 품목 박스 입수" style="width:96px"></td>
       <td class="acts"><button class="okbtn" data-act="addItem" type="button" aria-label="품목 추가" disabled>✓</button><button class="xbtn" data-act="clearNew" type="button" aria-label="입력 지우기">×</button></td></tr>`+
     master.items.map((it,i)=>`<tr data-code="${esc(it.code)}"><td><input class="in mono" data-k="code" value="${esc(it.code)}" id="im${i}c" aria-label="상품코드"></td>
       <td><input class="in" data-k="name" value="${esc(it.name)}" id="im${i}n" aria-label="상품명"></td>
       <td><select class="in" data-k="kind" id="im${i}t" aria-label="구분">${kindOpts(kindOf(it))}</select></td>
+      <td><input class="in num" data-k="boxQty" id="im${i}b" type="number" inputmode="numeric" value="${esc(it.boxQty??'')}" placeholder="-" aria-label="박스 입수" style="width:96px"></td>
       <td class="acts"><button class="okbtn" data-act="saveItem" type="button" aria-label="저장" disabled>✓</button><button class="xbtn" data-act="delItem" type="button" aria-label="품목 삭제">×</button></td></tr>`).join('')+'</tbody>';
 }
-function rowVals(tr){const g=k=>tr.querySelector(`[data-k="${k}"]`).value.trim();return{code:g('code'),name:g('name'),kind:g('kind')||'세트'}}
-function cleanItem(i){const{type,...rest}=i;return{...rest,kind:kindOf(i)}}
+function rowVals(tr){const g=k=>tr.querySelector(`[data-k="${k}"]`).value.trim();const bq=num(g('boxQty'));return{code:g('code'),name:g('name'),kind:g('kind')||'세트',boxQty:bq>0?bq:''}}
+function cleanItem(i){const{type,...rest}=i;const o={...rest,kind:kindOf(i)};if(!(n0(i.boxQty)>0))delete o.boxQty;else o.boxQty=n0(i.boxQty);return o}
 async function saveMaster(items,types,msg){
   if(!db||readOnly){toast('저장 권한이 없어 품목을 바꿀 수 없습니다.');return false}
   const doc={types:types||master.types,items:items.map(cleanItem),updatedAt:Date.now()};
@@ -1078,10 +1089,10 @@ function parseItemBook(wb){
     const aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:'',raw:false});
     for(let h=0;h<Math.min(aoa.length,10);h++){
       const hd=(aoa[h]||[]).map(x=>String(x).replace(/\s/g,''));
-      const ci=hd.findIndex(x=>/^(상품코드|품목코드|코드|SKU)$/i.test(x)),ni=hd.findIndex(x=>/^(상품명|품목명|품명|Description)/i.test(x)),ti=hd.findIndex(x=>/^(구분|분류|품목구분|작업구분|세트\/?단품)$/.test(x));
+      const ci=hd.findIndex(x=>/^(상품코드|품목코드|코드|SKU)$/i.test(x)),ni=hd.findIndex(x=>/^(상품명|품목명|품명|Description)/i.test(x)),ti=hd.findIndex(x=>/^(구분|분류|품목구분|작업구분|세트\/?단품)$/.test(x)),bi=hd.findIndex(x=>/^(박스입수|입수|박스당수량|박스수량|BOX)$/i.test(x));
       if(ci<0||ni<0)continue;
       const out=[],seen=new Set();
-      aoa.slice(h+1).forEach(r=>{const code=String(r[ci]??'').trim(),name=String(r[ni]??'').trim();if(!code||!name||seen.has(code))return;seen.add(code);out.push({code,name,kind:ti>=0?normKind(r[ti]):''})});
+      aoa.slice(h+1).forEach(r=>{const code=String(r[ci]??'').trim(),name=String(r[ni]??'').trim();if(!code||!name||seen.has(code))return;seen.add(code);const bq=bi>=0?num(String(r[bi]??'').replace(/,/g,'')):'';out.push({code,name,kind:ti>=0?normKind(r[ti]):'',boxQty:bq>0?bq:''})});
       if(out.length)return out;
     }
   }
@@ -1094,7 +1105,7 @@ $('#itemFile').addEventListener('change',async e=>{
   try{rows=parseItemBook(XLSX.read(await f.arrayBuffer(),{type:'array'}))}catch{toast('파일을 읽지 못했습니다. .xlsx 또는 .csv 파일인지 확인해 주세요.');return}
   if(!rows){toast('상품코드·상품명 열을 찾지 못했습니다. 첫 줄에 "상품코드", "상품명" 제목을 넣어 주세요.');return}
   const by=new Map(master.items.map(i=>[i.code,i]));const add=[],chg=[];let same=0;
-  rows.forEach(r=>{const o=by.get(r.code);if(!o)add.push(r);else if(o.name!==r.name||(r.kind&&kindOf(o)!==r.kind))chg.push(r);else same++});
+  rows.forEach(r=>{const o=by.get(r.code);if(!o)add.push(r);else if(o.name!==r.name||(r.kind&&kindOf(o)!==r.kind)||(r.boxQty&&n0(o.boxQty)!==r.boxQty))chg.push(r);else same++});
   pendingImport={add,chg};
   const li=(r,tag)=>`<li>${tag} ${esc(r.code)} · ${esc(r.name)}${r.kind?' · '+r.kind:''}</li>`;
   const list=[...add.map(r=>li(r,'추가')),...chg.map(r=>li(r,'변경'))];
@@ -1109,16 +1120,16 @@ $('#importBox').addEventListener('click',async e=>{
   if(e.target.id==='impCancel'){pendingImport=null;$('#importBox').hidden=true;return}
   if(e.target.id!=='impApply'||!pendingImport)return;
   const{add,chg}=pendingImport;const cm=new Map(chg.map(r=>[r.code,r]));
-  const items=master.items.map(i=>{const r=cm.get(i.code);return r?{...i,name:r.name,kind:r.kind||kindOf(i)}:i});
-  add.forEach(r=>items.push({code:r.code,name:r.name,kind:r.kind||'세트'}));
+  const items=master.items.map(i=>{const r=cm.get(i.code);return r?{...i,name:r.name,kind:r.kind||kindOf(i),boxQty:r.boxQty||i.boxQty||''}:i});
+  add.forEach(r=>items.push({code:r.code,name:r.name,kind:r.kind||'세트',boxQty:r.boxQty||''}));
   const types=null;
   e.target.disabled=true;
   if(await saveMaster(items,types,`품목 ${add.length}개 추가, ${chg.length}개 변경했습니다.`)){pendingImport=null;$('#importBox').hidden=true;document.activeElement?.blur();renderSettings()}else e.target.disabled=false;
 });
 $('#tplBtn').addEventListener('click',async()=>{
   if(!dl||typeof XLSX==='undefined')return;
-  const aoa=[['상품코드','상품명','구분'],...master.items.map(i=>[i.code,i.name,kindOf(i)])];
-  const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:16},{wch:34},{wch:14}];
+  const aoa=[['상품코드','상품명','구분','박스입수'],...master.items.map(i=>[i.code,i.name,kindOf(i),n0(i.boxQty)||''])];
+  const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=[{wch:16},{wch:34},{wch:14},{wch:10}];
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'품목');
   try{await dl.save({filename:`${co.short} 품목마스터.xlsx`,data:new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})])})}
   catch(er){if(er?.code!=='declined')toast('이 화면에서는 파일을 저장할 수 없습니다.')}
@@ -1349,57 +1360,105 @@ $('#tab-stock').addEventListener('click',async e=>{
 
 /* ---------- 재고장 ----------
  * <업체>stockcheck/<날짜> : 아마레 도우미가 WMS 기간별 수불현황을 올린 것 {date,month,loadedAt,warehouse,items:[{code,name,open,ship,moveOut,setMake,end,...}]}
- * <업체>stockcount/<날짜> : 현장이 넣은 실수량 {date,month,counts:{code:수량},updatedAt}
+ * <업체>stockcount/<날짜> : 현장이 넣은 실수량 {date,month,counts:{code:{box,ea,total}},updatedAt}   (예전 자료는 code:숫자 = 낱개)
+ * config/<업체>ledgercfg : {exclude:{code:상품명}}  — 재고장에서 뺀 상품(미출고 코드 등)
+ * 박스 입수(boxQty)는 품목 마스터에서 관리. 실수량 = 박스수 × 입수 + 낱개
  */
-let lgDate=todayStr(),lgCheck=null,lgCount=null,lgUnsubs=[];
-function ledgerStop(){lgUnsubs.forEach(u=>u());lgUnsubs=[];lgCheck=null;lgCount=null;const b=$('#ledgerBadge');if(b)b.hidden=true}
+let lgDate=todayStr(),lgCheck=null,lgCount=null,lgCfg={exclude:{}},lgUnsubs=[];
+const lgCfgPath=()=>'config/'+(co?co.prefix:'')+'ledgercfg';
+function ledgerStop(){lgUnsubs.forEach(u=>u());lgUnsubs=[];lgCheck=null;lgCount=null;lgCfg={exclude:{}};const b=$('#ledgerBadge');if(b)b.hidden=true}
 function ledgerStart(){
   ledgerStop();if(!db||!co||!co.ledger)return;
-  const d=lgDate,c1=P('stockcheck'),c2=P('stockcount');
+  const d=lgDate,c1=P('stockcheck'),c2=P('stockcount'),cp=lgCfgPath();
   lgUnsubs.push(db.doc(c1+'/'+d).onSnapshot(s=>{if(lgDate!==d||P('stockcheck')!==c1)return;lgCheck=s.exists?s.data():null;renderLedger()},e=>toast(errMsg(e))));
   lgUnsubs.push(db.doc(c2+'/'+d).onSnapshot(s=>{if(lgDate!==d||P('stockcount')!==c2)return;if(!savers[c2+'/'+d]?.pending())lgCount=s.exists?s.data():null;renderLedger()},e=>toast(errMsg(e))));
+  lgUnsubs.push(db.doc(cp).onSnapshot(s=>{if(lgCfgPath()!==cp)return;const x=s.exists?s.data():{};lgCfg={exclude:(x&&x.exclude)||{}};renderLedger();renderSettings()},e=>toast(errMsg(e))));
 }
 function lgGo(ds){if(!ds)return;lgDate=ds;document.activeElement?.blur();ledgerStart();renderLedger()}
 const lgTarget=it=>n0(it.ship)>0||n0(it.moveOut)>0;
+const lgExcluded=it=>!!lgCfg.exclude[it.code];
 function lgName(it){return it.name||itemBy(it.code)?.name||it.code}
+const lgBoxQty=it=>n0(itemBy(it.code)?.boxQty);
+/* 입력값 → {box,ea,total} (예전 숫자 자료는 낱개로 취급) */
+function lgVal(v,it){
+  if(v===''||v==null)return null;
+  if(typeof v!=='object'){return {box:'',ea:v,total:n0(v)}}
+  const b=v.box===''||v.box==null?'':n0(v.box),e=v.ea===''||v.ea==null?'':n0(v.ea);
+  if(b===''&&e==='')return null;
+  return {box:b,ea:e,total:n0(b)*lgBoxQty(it)+n0(e)};
+}
+function lgRows(){const all=lgCheck?.items||[];return ($('#lgAll').checked?all:all.filter(lgTarget)).filter(it=>!lgExcluded(it))}
+function lgStats(rows,counts){let done=0,bad=0;rows.forEach(it=>{const v=lgVal(counts[it.code],it);if(v){done++;if(v.total!==n0(it.end))bad++}});return {done,bad}}
+function lgPaintStatus(rows,counts){
+  const {done,bad}=lgStats(rows,counts);
+  const st=$('#lgStatus');st.className='pill '+(bad?'bad':done&&done===rows.length?'ok':'warn');st.textContent=bad?`불일치 ${bad}건`:done===rows.length&&rows.length?'모두 일치':`입력 ${done}/${rows.length}`;
+  const bdg=$('#ledgerBadge');bdg.hidden=!bad;bdg.textContent=bad;return {done,bad};
+}
+async function lgSetExclude(code,name,on){
+  if(!db||readOnly||!co){toast('저장 권한이 없습니다.');return}
+  const ex={...lgCfg.exclude};if(on)ex[code]=name||code;else delete ex[code];
+  try{await db.doc(lgCfgPath()).set({exclude:ex,updatedAt:Date.now()});lgCfg={exclude:ex};renderLedger();renderSettings();toast(on?`${name||code} — 재고장에서 뺐습니다. (사무실 › 품목·설정에서 되돌릴 수 있음)`:`${name||code} — 재고장에 다시 넣었습니다.`)}
+  catch(e){toast(errMsg(e))}
+}
 function renderLedger(){
   if($('#tab-ledger').hidden||!co)return;
   $('#lgDate').value=lgDate;$('#lgDow').textContent=dowOf(lgDate)+'요일';
   const st=$('#lgStatus'),tb=$('#lgTable');
   if(!lgCheck){st.className='pill';st.textContent='WMS 자료 없음';$('#lgSum').innerHTML='';
     tb.innerHTML=`<tbody><tr><td class="note" style="white-space:normal;padding:18px">${esc(lgDate.slice(5).replace('-','/'))} 재고 자료가 아직 없습니다. 사무실 <b>아마레 도우미 → 재고장 → [기간별 수불현황 로드]</b>를 눌러 주세요.</td></tr></tbody>`;return}
-  const all=lgCheck.items||[],rows=$('#lgAll').checked?all:all.filter(lgTarget),counts=(lgCount&&lgCount.counts)||{};
-  let done=0,bad=0;rows.forEach(it=>{const v=counts[it.code];if(v!==''&&v!=null){done++;if(n0(v)!==n0(it.end))bad++}});
+  const rows=lgRows(),counts=(lgCount&&lgCount.counts)||{};
+  const {done,bad}=lgPaintStatus(rows,counts);
   const lt=lgCheck.loadedAt?new Date(lgCheck.loadedAt):null;
-  st.className='pill '+(bad?'bad':done&&done===rows.length?'ok':'warn');st.textContent=bad?`불일치 ${bad}건`:done===rows.length&&rows.length?'모두 일치':`입력 ${done}/${rows.length}`;
-  const bdg=$('#ledgerBadge');bdg.hidden=!bad;bdg.textContent=bad;
-  $('#lgSum').innerHTML=`<div class="s" style="--pc:var(--accent)"><span>대상 상품</span><b>${rows.length}</b></div><div class="s" style="--pc:var(--ok)"><span>실수량 입력</span><b>${done}</b></div><div class="s" style="--pc:var(--bad)"><span>불일치</span><b>${bad}</b></div><div class="s all"><span>WMS 로드</span><b style="font-size:14px">${lt?`${lt.getMonth()+1}/${lt.getDate()} ${String(lt.getHours()).padStart(2,'0')}:${String(lt.getMinutes()).padStart(2,'0')}`:'-'}</b><span>${esc(lgCheck.warehouse||'')}</span></div>`;
+  const nEx=(lgCheck.items||[]).filter(lgExcluded).length;
+  $('#lgSum').innerHTML=`<div class="s" style="--pc:var(--accent)"><span>대상 상품</span><b>${rows.length}</b></div><div class="s" style="--pc:var(--ok)"><span>실수량 입력</span><b>${done}</b></div><div class="s" style="--pc:var(--bad)"><span>불일치</span><b>${bad}</b></div><div class="s all"><span>WMS 로드</span><b style="font-size:14px">${lt?`${lt.getMonth()+1}/${lt.getDate()} ${String(lt.getHours()).padStart(2,'0')}:${String(lt.getMinutes()).padStart(2,'0')}`:'-'}</b><span>${esc(lgCheck.warehouse||'')}${nEx?` · 제외 ${nEx}`:''}</span></div>`;
   if(tb.contains(document.activeElement))return;
   if(!rows.length){tb.innerHTML='<tbody><tr><td class="note" style="white-space:normal;padding:18px">이날 배송·이동반출이 있는 상품이 없습니다. 「전체 상품 보기」를 켜면 모든 상품이 나옵니다.</td></tr></tbody>';return}
-  tb.innerHTML=`<thead><tr><th>상품명</th><th class="n">배송</th><th class="n">이동반출</th><th class="n">세트구성</th><th class="n">WMS 재고</th><th class="n">실수량</th><th class="n">차이</th></tr></thead><tbody>`+
-    rows.map(it=>{const v=counts[it.code];const has=v!==''&&v!=null;const diff=has?n0(v)-n0(it.end):null;const cls=has?(diff===0?'ok':'bad'):'';
-      return `<tr class="${cls?'lg-'+cls:''}"><td style="white-space:normal;min-width:180px"><b>${esc(lgName(it))}</b></td><td class="n">${n0(it.ship)||''}</td><td class="n">${n0(it.moveOut)||''}</td><td class="n">${n0(it.setMake)||''}</td><td class="n"><b>${fmtN(n0(it.end))}</b></td>
-        <td class="n"><input class="in num lgin ${cls}" type="number" inputmode="numeric" data-code="${esc(it.code)}" id="lg-${esc(it.code)}" value="${has?esc(v):''}" placeholder="실수량"></td>
-        <td class="n ${cls?'lgdiff-'+cls:''}">${has?(diff>0?'+'+diff:diff):''}</td></tr>`}).join('')+'</tbody>';
+  tb.innerHTML=`<thead><tr><th>상품명</th><th class="n">배송</th><th class="n">WMS 재고</th><th class="n">박스</th><th class="n">낱개</th><th class="n">실수량</th><th class="n">차이</th><th></th></tr></thead><tbody>`+
+    rows.map(it=>{const v=lgVal(counts[it.code],it);const has=!!v;const diff=has?v.total-n0(it.end):null;const cls=has?(diff===0?'ok':'bad'):'';const bq=lgBoxQty(it);
+      return `<tr class="${cls?'lg-'+cls:''}" data-row="${esc(it.code)}"><td class="lgname"><b>${esc(lgName(it))}</b>${bq?`<div class="note">1박스 = ${bq}개</div>`:''}</td><td class="n">${n0(it.ship)||''}</td><td class="n"><b>${fmtN(n0(it.end))}</b></td>
+        <td class="n"><input class="in num lgin ${cls}" type="number" inputmode="numeric" data-code="${esc(it.code)}" data-k="box" id="lgb-${esc(it.code)}" value="${has?esc(v.box):''}" placeholder="${bq?'박스':'-'}" ${bq?'':'disabled title="사무실 › 품목·설정에서 박스 입수를 넣으면 쓸 수 있습니다"'}></td>
+        <td class="n"><input class="in num lgin ${cls}" type="number" inputmode="numeric" data-code="${esc(it.code)}" data-k="ea" id="lge-${esc(it.code)}" value="${has?esc(v.ea):''}" placeholder="낱개"></td>
+        <td class="n lgtot ${cls?'lgdiff-'+cls:''}">${has?fmtN(v.total):''}</td>
+        <td class="n lgdiff ${cls?'lgdiff-'+cls:''}">${has?(diff>0?'+'+diff:diff):''}</td>
+        <td><button class="xbtn" type="button" data-lgex="${esc(it.code)}" title="재고장에서 제외 (미출고 코드 등)" aria-label="재고장에서 제외" style="height:34px;width:30px">×</button></td></tr>`}).join('')+'</tbody>';
 }
 $('#tab-ledger').addEventListener('input',e=>{
-  const i=e.target;if(!i.dataset.code)return;
-  const d=clone(lgCount||{});d.date=lgDate;d.month=lgDate.slice(0,7);d.counts={...(d.counts||{}),[i.dataset.code]:num(i.value)};d.updatedAt=Date.now();if(lsGet('myName'))d.by=lsGet('myName');
+  const i=e.target;if(!i.dataset.code||!i.dataset.k)return;const code=i.dataset.code;
+  const it=(lgCheck?.items||[]).find(x=>x.code===code);
+  const cur=lgVal((lgCount&&lgCount.counts||{})[code],it)||{box:'',ea:''};
+  const nv={box:cur.box,ea:cur.ea};nv[i.dataset.k]=num(i.value);
+  const v=lgVal(nv,it);
+  const d=clone(lgCount||{});d.date=lgDate;d.month=lgDate.slice(0,7);d.counts={...(d.counts||{})};
+  if(v)d.counts[code]={box:v.box,ea:v.ea,total:v.total};else delete d.counts[code];
+  d.updatedAt=Date.now();if(lsGet('myName'))d.by=lsGet('myName');
   lgCount=d;saver(P('stockcount')+'/'+lgDate).push(clone(d));
-  const it=(lgCheck?.items||[]).find(x=>x.code===i.dataset.code);const has=i.value!=='';const ok=has&&n0(i.value)===n0(it?.end);
-  i.classList.toggle('bad',has&&!ok);i.classList.toggle('ok',ok);const tr=i.closest('tr');tr.className=has?(ok?'lg-ok':'lg-bad'):'';
-  const dc=tr.lastElementChild;const diff=has?n0(i.value)-n0(it?.end):null;dc.textContent=has?(diff>0?'+'+diff:diff):'';dc.className='n '+(has?(ok?'lgdiff-ok':'lgdiff-bad'):'');
+  const has=!!v;const ok=has&&v.total===n0(it?.end);const cls=has?(ok?'ok':'bad'):'';
+  const tr=i.closest('tr');tr.className=cls?'lg-'+cls:'';
+  $$('.lgin',tr).forEach(x=>{x.classList.toggle('bad',has&&!ok);x.classList.toggle('ok',ok)});
+  const diff=has?v.total-n0(it?.end):null;
+  const tc=tr.querySelector('.lgtot');tc.textContent=has?fmtN(v.total):'';tc.className='n lgtot '+(cls?'lgdiff-'+cls:'');
+  const dc=tr.querySelector('.lgdiff');dc.textContent=has?(diff>0?'+'+diff:diff):'';dc.className='n lgdiff '+(cls?'lgdiff-'+cls:'');
   // 요약·배지만 갱신 (표는 입력 중이라 다시 그리지 않음)
-  const rows=($('#lgAll').checked?(lgCheck?.items||[]):(lgCheck?.items||[]).filter(lgTarget));let done=0,bad=0;rows.forEach(x=>{const v=d.counts[x.code];if(v!==''&&v!=null){done++;if(n0(v)!==n0(x.end))bad++}});
-  const st=$('#lgStatus');st.className='pill '+(bad?'bad':done&&done===rows.length?'ok':'warn');st.textContent=bad?`불일치 ${bad}건`:done===rows.length&&rows.length?'모두 일치':`입력 ${done}/${rows.length}`;
-  const bdg=$('#ledgerBadge');bdg.hidden=!bad;bdg.textContent=bad;
+  const {done,bad}=lgPaintStatus(lgRows(),d.counts);
   $$('#lgSum .s b')[1].textContent=done;$$('#lgSum .s b')[2].textContent=bad;
+});
+$('#tab-ledger').addEventListener('click',e=>{
+  const b=e.target.closest('[data-lgex]');if(!b)return;
+  if(!b.classList.contains('arm')){b.classList.add('arm');b.textContent='제외';setTimeout(()=>{b.classList.remove('arm');b.textContent='×'},3000);return}
+  const it=(lgCheck?.items||[]).find(x=>x.code===b.dataset.lgex);document.activeElement?.blur();lgSetExclude(b.dataset.lgex,it?lgName(it):'',true);
 });
 $('#lgDate').addEventListener('change',e=>lgGo(e.target.value));
 $('#lgPrev').addEventListener('click',()=>lgGo(shiftDate(lgDate,-1)));
 $('#lgNext').addEventListener('click',()=>lgGo(shiftDate(lgDate,1)));
 $('#lgToday').addEventListener('click',()=>lgGo(todayStr()));
 $('#lgAll').addEventListener('change',()=>{document.activeElement?.blur();renderLedger()});
+/* 품목·설정 탭의 「재고장 제외 상품」 목록 */
+function renderLgExclude(){
+  const box=$('#lgExBox');if(!box)return;const ex=lgCfg.exclude||{};const codes=Object.keys(ex);
+  box.innerHTML=codes.length?`<ul style="margin:0;padding-left:18px;font-size:14px;line-height:2">${codes.map(c=>`<li><b>${esc(ex[c])}</b> <span class="note mono">${esc(c)}</span> <button class="linkbtn" type="button" data-lgrestore="${esc(c)}">다시 넣기</button></li>`).join('')}</ul>`
+    :'<p class="note" style="margin:0">제외한 상품이 없습니다. 재고장 표의 각 줄 오른쪽 <b>×</b>를 두 번 누르면 그 상품(미출고 코드 등)을 재고장에서 뺄 수 있습니다.</p>';
+}
+$('#tab-settings').addEventListener('click',e=>{const b=e.target.closest('[data-lgrestore]');if(b)lgSetExclude(b.dataset.lgrestore,lgCfg.exclude[b.dataset.lgrestore],false)});
 
 /* 업체 선택 · 전환 */
 function renderCoUI(){
