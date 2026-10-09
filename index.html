@@ -190,6 +190,24 @@ body:not(.no-co) #home{display:none}
 #lgTable td.lgname{white-space:normal;min-width:140px;max-width:220px;line-height:1.3}
 #lgTable td.lgname .note{font-size:11px;line-height:1.3}
 #lgTable th,#lgTable td{padding:8px 6px}
+.lgbq{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);font-weight:600}
+.lgbq .in{height:28px;width:58px;padding:0 6px;font-size:12px}
+/* 핸드폰: 가로 스크롤 없이 상품명 아래에 숫자·입력칸을 줄바꿈 */
+@media (max-width:640px){
+  #lgTable thead{display:none}
+  #lgTable,#lgTable tbody{display:block}
+  #lgTable tbody tr{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 8px;padding:10px 4px;border-bottom:1px solid var(--line)}
+  #lgTable tbody tr:not(.lg-ok):not(.lg-bad) td{background:none}
+  #lgTable tbody td{display:block;border:0;padding:0;white-space:normal;text-align:left;min-width:0}
+  #lgTable tbody td[data-l]::before{content:attr(data-l);display:block;font-size:11px;color:var(--muted);font-weight:600;margin-bottom:2px}
+  #lgTable tbody td.lgname{grid-column:1/-1;max-width:none;order:0}
+  #lgTable tbody td.lgname b{font-size:15px}
+  #lgTable tbody td.c-ship{order:1} #lgTable tbody td.c-wms{order:2} #lgTable tbody td.lgtot{order:3} #lgTable tbody td.lgdiff{order:4}
+  #lgTable tbody td.c-box{order:5;grid-column:span 2} #lgTable tbody td.c-ea{order:6} #lgTable tbody td.c-x{order:7;align-self:end;justify-self:end}
+  #lgTable tbody td.n{font-size:16px}
+  #lgTable tbody td .lgin{width:100%;height:44px;font-size:17px;text-align:left}
+  #lgTable tbody td.note{grid-column:1/-1}
+}
 .lgin.bad{background:var(--bad-soft);border-color:var(--bad);color:var(--bad);font-weight:700}
 .lgin.ok{background:var(--ok-soft);border-color:var(--ok)}
 tr.lg-bad td{background:var(--bad-soft)}
@@ -1364,21 +1382,27 @@ $('#tab-stock').addEventListener('click',async e=>{
  * config/<업체>ledgercfg : {exclude:{code:상품명}}  — 재고장에서 뺀 상품(미출고 코드 등)
  * 박스 입수(boxQty)는 품목 마스터에서 관리. 실수량 = 박스수 × 입수 + 낱개
  */
-let lgDate=todayStr(),lgCheck=null,lgCount=null,lgCfg={exclude:{}},lgUnsubs=[];
+let lgDate=todayStr(),lgCheck=null,lgCount=null,lgCfg={exclude:{},boxQty:{}},lgUnsubs=[];
 const lgCfgPath=()=>'config/'+(co?co.prefix:'')+'ledgercfg';
-function ledgerStop(){lgUnsubs.forEach(u=>u());lgUnsubs=[];lgCheck=null;lgCount=null;lgCfg={exclude:{}};const b=$('#ledgerBadge');if(b)b.hidden=true}
+function ledgerStop(){lgUnsubs.forEach(u=>u());lgUnsubs=[];lgCheck=null;lgCount=null;lgCfg={exclude:{},boxQty:{}};const b=$('#ledgerBadge');if(b)b.hidden=true}
 function ledgerStart(){
   ledgerStop();if(!db||!co||!co.ledger)return;
   const d=lgDate,c1=P('stockcheck'),c2=P('stockcount'),cp=lgCfgPath();
   lgUnsubs.push(db.doc(c1+'/'+d).onSnapshot(s=>{if(lgDate!==d||P('stockcheck')!==c1)return;lgCheck=s.exists?s.data():null;renderLedger()},e=>toast(errMsg(e))));
   lgUnsubs.push(db.doc(c2+'/'+d).onSnapshot(s=>{if(lgDate!==d||P('stockcount')!==c2)return;if(!savers[c2+'/'+d]?.pending())lgCount=s.exists?s.data():null;renderLedger()},e=>toast(errMsg(e))));
-  lgUnsubs.push(db.doc(cp).onSnapshot(s=>{if(lgCfgPath()!==cp)return;const x=s.exists?s.data():{};lgCfg={exclude:(x&&x.exclude)||{}};renderLedger();renderSettings()},e=>toast(errMsg(e))));
+  lgUnsubs.push(db.doc(cp).onSnapshot(s=>{if(lgCfgPath()!==cp)return;const x=s.exists?s.data():{};lgCfg={exclude:(x&&x.exclude)||{},boxQty:(x&&x.boxQty)||{}};renderLedger();renderSettings()},e=>toast(errMsg(e))));
 }
 function lgGo(ds){if(!ds)return;lgDate=ds;document.activeElement?.blur();ledgerStart();renderLedger()}
 const lgTarget=it=>n0(it.ship)>0||n0(it.moveOut)>0;
 const lgExcluded=it=>!!lgCfg.exclude[it.code];
 function lgName(it){return it.name||itemBy(it.code)?.name||it.code}
-const lgBoxQty=it=>n0(itemBy(it.code)?.boxQty);
+/* 박스 입수: 품목 마스터 값 → 없으면 재고장에서 현장이 넣은 값(ledgercfg.boxQty) */
+const lgBoxQty=it=>n0(itemBy(it.code)?.boxQty)||n0(lgCfg.boxQty[it.code]);
+async function lgSaveCfg(patch){
+  if(!db||readOnly||!co){toast('저장 권한이 없습니다.');return false}
+  const doc={exclude:lgCfg.exclude,boxQty:lgCfg.boxQty,...patch,updatedAt:Date.now()};
+  try{await db.doc(lgCfgPath()).set(doc);lgCfg={exclude:doc.exclude,boxQty:doc.boxQty};return true}catch(e){toast(errMsg(e));return false}
+}
 /* 입력값 → {box,ea,total} (예전 숫자 자료는 낱개로 취급) */
 function lgVal(v,it){
   if(v===''||v==null)return null;
@@ -1397,8 +1421,12 @@ function lgPaintStatus(rows,counts){
 async function lgSetExclude(code,name,on){
   if(!db||readOnly||!co){toast('저장 권한이 없습니다.');return}
   const ex={...lgCfg.exclude};if(on)ex[code]=name||code;else delete ex[code];
-  try{await db.doc(lgCfgPath()).set({exclude:ex,updatedAt:Date.now()});lgCfg={exclude:ex};renderLedger();renderSettings();toast(on?`${name||code} — 재고장에서 뺐습니다. (사무실 › 품목·설정에서 되돌릴 수 있음)`:`${name||code} — 재고장에 다시 넣었습니다.`)}
-  catch(e){toast(errMsg(e))}
+  if(await lgSaveCfg({exclude:ex})){renderLedger();renderSettings();toast(on?`${name||code} — 재고장에서 뺐습니다. (사무실 › 품목·설정에서 되돌릴 수 있음)`:`${name||code} — 재고장에 다시 넣었습니다.`)}
+}
+/* 재고장에서 바로 넣는 박스 입수 (품목 마스터에 값이 없을 때) */
+async function lgSetBoxQty(code,q){
+  const bq={...lgCfg.boxQty};if(q>0)bq[code]=q;else delete bq[code];
+  if(await lgSaveCfg({boxQty:bq})){document.activeElement?.blur();renderLedger();if(q>0)toast(`1박스 = ${q}개로 저장했습니다.`)}
 }
 function renderLedger(){
   if($('#tab-ledger').hidden||!co)return;
@@ -1415,12 +1443,14 @@ function renderLedger(){
   if(!rows.length){tb.innerHTML='<tbody><tr><td class="note" style="white-space:normal;padding:18px">이날 배송·이동반출이 있는 상품이 없습니다. 「전체 상품 보기」를 켜면 모든 상품이 나옵니다.</td></tr></tbody>';return}
   tb.innerHTML=`<thead><tr><th>상품명</th><th class="n">배송</th><th class="n">WMS 재고</th><th class="n">박스</th><th class="n">낱개</th><th class="n">실수량</th><th class="n">차이</th><th></th></tr></thead><tbody>`+
     rows.map(it=>{const v=lgVal(counts[it.code],it);const has=!!v;const diff=has?v.total-n0(it.end):null;const cls=has?(diff===0?'ok':'bad'):'';const bq=lgBoxQty(it);
-      return `<tr class="${cls?'lg-'+cls:''}" data-row="${esc(it.code)}"><td class="lgname"><b>${esc(lgName(it))}</b>${bq?`<div class="note">1박스 = ${bq}개</div>`:''}</td><td class="n">${n0(it.ship)||''}</td><td class="n"><b>${fmtN(n0(it.end))}</b></td>
-        <td class="n"><input class="in num lgin ${cls}" type="number" inputmode="numeric" data-code="${esc(it.code)}" data-k="box" id="lgb-${esc(it.code)}" value="${has?esc(v.box):''}" placeholder="${bq?'박스':'-'}" ${bq?'':'disabled title="사무실 › 품목·설정에서 박스 입수를 넣으면 쓸 수 있습니다"'}></td>
-        <td class="n"><input class="in num lgin ${cls}" type="number" inputmode="numeric" data-code="${esc(it.code)}" data-k="ea" id="lge-${esc(it.code)}" value="${has?esc(v.ea):''}" placeholder="낱개"></td>
-        <td class="n lgtot ${cls?'lgdiff-'+cls:''}">${has?fmtN(v.total):''}</td>
-        <td class="n lgdiff ${cls?'lgdiff-'+cls:''}">${has?(diff>0?'+'+diff:diff):''}</td>
-        <td><button class="xbtn" type="button" data-lgex="${esc(it.code)}" title="재고장에서 제외 (미출고 코드 등)" aria-label="재고장에서 제외" style="height:34px;width:30px">×</button></td></tr>`}).join('')+'</tbody>';
+      const bqHtml=bq?`<div class="note">1박스 = ${bq}개${itemBy(it.code)?.boxQty?'':` <button class="linkbtn" type="button" data-lgbqedit="${esc(it.code)}">수정</button>`}</div>`
+        :`<div class="lgbq">1박스 = <input class="in num" type="number" inputmode="numeric" data-lgbq="${esc(it.code)}" id="lgq-${esc(it.code)}" placeholder="입수" aria-label="박스 입수">개 <span style="font-weight:400">(박스로 세려면 입력)</span></div>`;
+      return `<tr class="${cls?'lg-'+cls:''}" data-row="${esc(it.code)}"><td class="lgname"><b>${esc(lgName(it))}</b>${bqHtml}</td><td class="n c-ship" data-l="배송">${n0(it.ship)||''}</td><td class="n c-wms" data-l="WMS 재고"><b>${fmtN(n0(it.end))}</b></td>
+        <td class="n c-box" data-l="박스${bq?' (×'+bq+')':''}"><input class="in num lgin ${cls}" type="number" inputmode="numeric" data-code="${esc(it.code)}" data-k="box" id="lgb-${esc(it.code)}" value="${has?esc(v.box):''}" placeholder="${bq?'박스':'입수 먼저'}" ${bq?'':'disabled'}></td>
+        <td class="n c-ea" data-l="낱개"><input class="in num lgin ${cls}" type="number" inputmode="numeric" data-code="${esc(it.code)}" data-k="ea" id="lge-${esc(it.code)}" value="${has?esc(v.ea):''}" placeholder="낱개"></td>
+        <td class="n lgtot ${cls?'lgdiff-'+cls:''}" data-l="실수량">${has?fmtN(v.total):''}</td>
+        <td class="n lgdiff ${cls?'lgdiff-'+cls:''}" data-l="차이">${has?(diff>0?'+'+diff:diff):''}</td>
+        <td class="c-x"><button class="xbtn" type="button" data-lgex="${esc(it.code)}" title="재고장에서 제외 (미출고 코드 등)" aria-label="재고장에서 제외" style="height:34px;width:30px">×</button></td></tr>`}).join('')+'</tbody>';
 }
 $('#tab-ledger').addEventListener('input',e=>{
   const i=e.target;if(!i.dataset.code||!i.dataset.k)return;const code=i.dataset.code;
@@ -1442,7 +1472,10 @@ $('#tab-ledger').addEventListener('input',e=>{
   const {done,bad}=lgPaintStatus(lgRows(),d.counts);
   $$('#lgSum .s b')[1].textContent=done;$$('#lgSum .s b')[2].textContent=bad;
 });
+$('#tab-ledger').addEventListener('change',e=>{const i=e.target;if(i.dataset.lgbq)lgSetBoxQty(i.dataset.lgbq,n0(i.value))});
+$('#tab-ledger').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.dataset?.lgbq){e.preventDefault();e.target.blur()}});
 $('#tab-ledger').addEventListener('click',e=>{
+  const ed=e.target.closest('[data-lgbqedit]');if(ed){const c=ed.dataset.lgbqedit;const cur=lgCfg.boxQty[c]||'';const q=prompt('1박스에 들어가는 개수를 넣어 주세요. (비우면 박스 입력 해제)',cur);if(q===null)return;lgSetBoxQty(c,n0(q));return}
   const b=e.target.closest('[data-lgex]');if(!b)return;
   if(!b.classList.contains('arm')){b.classList.add('arm');b.textContent='제외';setTimeout(()=>{b.classList.remove('arm');b.textContent='×'},3000);return}
   const it=(lgCheck?.items||[]).find(x=>x.code===b.dataset.lgex);document.activeElement?.blur();lgSetExclude(b.dataset.lgex,it?lgName(it):'',true);
