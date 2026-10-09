@@ -1048,11 +1048,11 @@ function renderSettings(){
     master.items.map((it,i)=>`<tr data-code="${esc(it.code)}"><td><input class="in mono" data-k="code" value="${esc(it.code)}" id="im${i}c" aria-label="상품코드"></td>
       <td><input class="in" data-k="name" value="${esc(it.name)}" id="im${i}n" aria-label="상품명"></td>
       <td><select class="in" data-k="kind" id="im${i}t" aria-label="구분">${kindOpts(kindOf(it))}</select></td>
-      <td><input class="in num" data-k="boxQty" id="im${i}b" type="number" inputmode="numeric" value="${esc(it.boxQty??'')}" placeholder="-" aria-label="박스 입수" style="width:96px"></td>
+      <td><input class="in num" data-k="boxQty" id="im${i}b" type="number" inputmode="numeric" value="${kindOf(it)==='단품'?esc(it.boxQty??''):''}" placeholder="${kindOf(it)==='단품'?'-':'세트'}" aria-label="박스 입수" style="width:96px" ${kindOf(it)==='단품'?'':'disabled title="박스 입수는 단품에만 씁니다"'}></td>
       <td class="acts"><button class="okbtn" data-act="saveItem" type="button" aria-label="저장" disabled>✓</button><button class="xbtn" data-act="delItem" type="button" aria-label="품목 삭제">×</button></td></tr>`).join('')+'</tbody>';
 }
 function rowVals(tr){const g=k=>tr.querySelector(`[data-k="${k}"]`).value.trim();const bq=num(g('boxQty'));return{code:g('code'),name:g('name'),kind:g('kind')||'세트',boxQty:bq>0?bq:''}}
-function cleanItem(i){const{type,...rest}=i;const o={...rest,kind:kindOf(i)};if(!(n0(i.boxQty)>0))delete o.boxQty;else o.boxQty=n0(i.boxQty);return o}
+function cleanItem(i){const{type,...rest}=i;const o={...rest,kind:kindOf(i)};if(!(n0(i.boxQty)>0)||o.kind!=='단품')delete o.boxQty;else o.boxQty=n0(i.boxQty);return o}
 async function saveMaster(items,types,msg){
   if(!db||readOnly){toast('저장 권한이 없어 품목을 바꿀 수 없습니다.');return false}
   const doc={types:types||master.types,items:items.map(cleanItem),updatedAt:Date.now()};
@@ -1397,7 +1397,9 @@ const lgTarget=it=>n0(it.ship)>0||n0(it.moveOut)>0;
 const lgExcluded=it=>!!lgCfg.exclude[it.code];
 function lgName(it){return it.name||itemBy(it.code)?.name||it.code}
 /* 박스 입수: 품목 마스터 값 → 없으면 재고장에서 현장이 넣은 값(ledgercfg.boxQty) */
-const lgBoxQty=it=>n0(itemBy(it.code)?.boxQty)||n0(lgCfg.boxQty[it.code]);
+/* 박스 입수는 단품에만 (세트·마스터에 없는 상품은 낱개만) */
+const lgIsUnit=it=>{const m=itemBy(it.code);return !!m&&kindOf(m)==='단품'};
+const lgBoxQty=it=>lgIsUnit(it)?(n0(itemBy(it.code)?.boxQty)||n0(lgCfg.boxQty[it.code])):0;
 async function lgSaveCfg(patch){
   if(!db||readOnly||!co){toast('저장 권한이 없습니다.');return false}
   const doc={exclude:lgCfg.exclude,boxQty:lgCfg.boxQty,...patch,updatedAt:Date.now()};
@@ -1443,10 +1445,12 @@ function renderLedger(){
   if(!rows.length){tb.innerHTML='<tbody><tr><td class="note" style="white-space:normal;padding:18px">이날 배송·이동반출이 있는 상품이 없습니다. 「전체 상품 보기」를 켜면 모든 상품이 나옵니다.</td></tr></tbody>';return}
   tb.innerHTML=`<thead><tr><th>상품명</th><th class="n">배송</th><th class="n">WMS 재고</th><th class="n">박스</th><th class="n">낱개</th><th class="n">실수량</th><th class="n">차이</th><th></th></tr></thead><tbody>`+
     rows.map(it=>{const v=lgVal(counts[it.code],it);const has=!!v;const diff=has?v.total-n0(it.end):null;const cls=has?(diff===0?'ok':'bad'):'';const bq=lgBoxQty(it);
-      const bqHtml=bq?`<div class="note">1박스 = ${bq}개${itemBy(it.code)?.boxQty?'':` <button class="linkbtn" type="button" data-lgbqedit="${esc(it.code)}">수정</button>`}</div>`
+      const unit=lgIsUnit(it);
+      const bqHtml=!unit?'':bq?`<div class="note">1박스 = ${bq}개${itemBy(it.code)?.boxQty?'':` <button class="linkbtn" type="button" data-lgbqedit="${esc(it.code)}">수정</button>`}</div>`
         :`<div class="lgbq">1박스 = <input class="in num" type="number" inputmode="numeric" data-lgbq="${esc(it.code)}" id="lgq-${esc(it.code)}" placeholder="입수" aria-label="박스 입수">개 <span style="font-weight:400">(박스로 세려면 입력)</span></div>`;
+      const boxCell=unit?`<input class="in num lgin ${cls}" type="number" inputmode="numeric" data-code="${esc(it.code)}" data-k="box" id="lgb-${esc(it.code)}" value="${has?esc(v.box):''}" placeholder="${bq?'박스':'입수 먼저'}" ${bq?'':'disabled'}>`:'<span class="note">낱개만</span>';
       return `<tr class="${cls?'lg-'+cls:''}" data-row="${esc(it.code)}"><td class="lgname"><b>${esc(lgName(it))}</b>${bqHtml}</td><td class="n c-ship" data-l="배송">${n0(it.ship)||''}</td><td class="n c-wms" data-l="WMS 재고"><b>${fmtN(n0(it.end))}</b></td>
-        <td class="n c-box" data-l="박스${bq?' (×'+bq+')':''}"><input class="in num lgin ${cls}" type="number" inputmode="numeric" data-code="${esc(it.code)}" data-k="box" id="lgb-${esc(it.code)}" value="${has?esc(v.box):''}" placeholder="${bq?'박스':'입수 먼저'}" ${bq?'':'disabled'}></td>
+        <td class="n c-box" data-l="박스${bq?' (×'+bq+')':''}">${boxCell}</td>
         <td class="n c-ea" data-l="낱개"><input class="in num lgin ${cls}" type="number" inputmode="numeric" data-code="${esc(it.code)}" data-k="ea" id="lge-${esc(it.code)}" value="${has?esc(v.ea):''}" placeholder="낱개"></td>
         <td class="n lgtot ${cls?'lgdiff-'+cls:''}" data-l="실수량">${has?fmtN(v.total):''}</td>
         <td class="n lgdiff ${cls?'lgdiff-'+cls:''}" data-l="차이">${has?(diff>0?'+'+diff:diff):''}</td>
