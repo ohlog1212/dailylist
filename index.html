@@ -436,7 +436,7 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
     </div>
     <div class="psum" id="lgSum"></div>
     <div class="sheet">
-      <h2>재고장 <span class="sub">배송·이동반출이 있는 상품만 · 실수량 = 박스 × 입수 + 낱개</span>
+      <h2>재고장 <span class="sub">배송·이동반출·세트구성·해체가 있는 상품 · 실수량 = 박스 × 입수 + 낱개</span>
         <span class="right"><label class="row" style="font-size:12.5px;font-weight:600;color:var(--muted)"><input type="checkbox" id="lgAll"> 전체 상품 보기</label></span></h2>
       <div class="tablewrap"><table id="lgTable"></table></div>
       <div class="body"><p class="note" style="margin:0" id="lgNote">사무실 PC의 <b>아마레 도우미 → 재고장</b>에서 <b>[기간별 수불현황 로드]</b>를 누르면 그날 WMS 재고가 여기에 들어옵니다. 실수량이 WMS 재고수량과 다르면 칸이 <b style="color:var(--bad)">빨간색</b>으로 표시됩니다.</p></div>
@@ -1393,7 +1393,8 @@ function ledgerStart(){
   lgUnsubs.push(db.doc(cp).onSnapshot(s=>{if(lgCfgPath()!==cp)return;const x=s.exists?s.data():{};lgCfg={exclude:(x&&x.exclude)||{},boxQty:(x&&x.boxQty)||{}};renderLedger();renderSettings()},e=>toast(errMsg(e))));
 }
 function lgGo(ds){if(!ds)return;lgDate=ds;document.activeElement?.blur();ledgerStart();renderLedger()}
-const lgTarget=it=>n0(it.ship)>0||n0(it.moveOut)>0;
+/* 재고장 대상: 배송·이동반출이 있거나, 세트구성·세트해체로 수량이 움직인 상품(팩과 그 구성품 모두) */
+const lgTarget=it=>n0(it.ship)>0||n0(it.moveOut)>0||n0(it.setMake)!==0||n0(it.setBreak)!==0;
 const lgExcluded=it=>!!lgCfg.exclude[it.code];
 function lgName(it){return it.name||itemBy(it.code)?.name||it.code}
 /* 박스 입수: 품목 마스터 값 → 없으면 재고장에서 현장이 넣은 값(ledgercfg.boxQty) */
@@ -1442,7 +1443,7 @@ function renderLedger(){
   const nEx=(lgCheck.items||[]).filter(lgExcluded).length;
   $('#lgSum').innerHTML=`<div class="s" style="--pc:var(--accent)"><span>대상 상품</span><b>${rows.length}</b></div><div class="s" style="--pc:var(--ok)"><span>실수량 입력</span><b>${done}</b></div><div class="s" style="--pc:var(--bad)"><span>불일치</span><b>${bad}</b></div><div class="s all"><span>WMS 로드</span><b style="font-size:14px">${lt?`${lt.getMonth()+1}/${lt.getDate()} ${String(lt.getHours()).padStart(2,'0')}:${String(lt.getMinutes()).padStart(2,'0')}`:'-'}</b><span>${esc(lgCheck.warehouse||'')}${nEx?` · 제외 ${nEx}`:''}</span></div>`;
   if(tb.contains(document.activeElement))return;
-  if(!rows.length){tb.innerHTML='<tbody><tr><td class="note" style="white-space:normal;padding:18px">이날 배송·이동반출이 있는 상품이 없습니다. 「전체 상품 보기」를 켜면 모든 상품이 나옵니다.</td></tr></tbody>';return}
+  if(!rows.length){tb.innerHTML='<tbody><tr><td class="note" style="white-space:normal;padding:18px">이날 배송·이동반출·세트구성·해체가 있는 상품이 없습니다. 「전체 상품 보기」를 켜면 모든 상품이 나옵니다.</td></tr></tbody>';return}
   tb.innerHTML=`<thead><tr><th>상품명</th><th class="n">배송</th><th class="n">WMS 재고</th><th class="n">박스</th><th class="n">낱개</th><th class="n">실수량</th><th class="n">차이</th><th></th></tr></thead><tbody>`+
     rows.map(it=>{const v=lgVal(counts[it.code],it);const has=!!v;const diff=has?v.total-n0(it.end):null;const cls=has?(diff===0?'ok':'bad'):'';const bq=lgBoxQty(it);
       const unit=lgIsUnit(it);
