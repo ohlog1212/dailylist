@@ -36,10 +36,17 @@ button,input,select,textarea{font:inherit;color:inherit}
 .sync{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;margin-left:auto}
 .sync::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--muted)}
 .sync[data-s="live"]::before{background:var(--ok)} .sync[data-s="saving"]::before{background:var(--warn)} .sync[data-s="off"]::before{background:var(--bad)}
-.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+.tabs{display:flex;gap:2px;overflow:visible}
 .tabs button{border:0;background:none;padding:9px 12px 11px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap;cursor:pointer}
 .tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
 .tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+/* 사무실용 메뉴(월간 현황·엑셀 반영·품목·설정)는 접어 둠 — 현장에서는 거의 안 씀 */
+.more{position:relative;margin-left:auto}
+.more>button .caret{font-size:11px;margin-left:2px}
+.moremenu{position:absolute;right:0;top:100%;z-index:20;min-width:150px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgb(0 0 0 / .15);padding:4px;display:flex;flex-direction:column}
+.moremenu button{text-align:left;padding:10px 12px;border-radius:7px;border-bottom:0}
+.moremenu button.on{background:var(--accent-soft);color:var(--accent)}
+.moremenu button:hover{background:var(--surface-2)}
 
 main{max-width:1180px;margin:0 auto;padding:14px 16px 80px}
 .datebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
@@ -178,6 +185,12 @@ td .in{height:34px;font-size:13.5px;padding:0 8px}
 body.no-co .tabs,body.no-co .coswitch,body.no-co [id^="tab-"]{display:none!important}
 body:not(.no-co) #home{display:none}
 /* 부자재 관리 */
+/* 재고장 */
+.lgin{width:96px}
+.lgin.bad{background:var(--bad-soft);border-color:var(--bad);color:var(--bad);font-weight:700}
+.lgin.ok{background:var(--ok-soft);border-color:var(--ok)}
+tr.lg-bad td{background:var(--bad-soft)}
+.lgdiff-bad{color:var(--bad);font-weight:700}.lgdiff-ok{color:var(--ok)}
 .tbadge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:5px;border-radius:9px;background:var(--bad);color:var(--surface);font-size:11px;font-weight:700;vertical-align:1px}
 .stockalert{display:flex;align-items:center;gap:8px;width:100%;margin-bottom:14px;padding:10px 14px;border:1px solid var(--bad);border-radius:var(--r);background:var(--bad-soft);color:var(--bad);font-weight:600;font-size:14px;text-align:left;cursor:pointer}
 .stockalert:focus-visible{outline:2px solid var(--bad);outline-offset:2px}
@@ -249,10 +262,16 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
       <span id="sync" class="sync" data-s="">연결 중</span></div>
     <nav class="tabs" role="tablist">
       <button data-tab="log" class="on" role="tab">일지 작성</button>
-      <button data-tab="month" role="tab">월간 현황</button>
+      <button data-tab="ledger" role="tab" id="ledgerTab">재고장<span class="tbadge" id="ledgerBadge" hidden></span></button>
       <button data-tab="stock" role="tab">부자재 관리<span class="tbadge" id="stockBadge" hidden></span></button>
-      <button data-tab="export" role="tab">엑셀 반영</button>
-      <button data-tab="settings" role="tab">품목·설정</button>
+      <div class="more" id="moreWrap">
+        <button type="button" id="moreBtn" aria-haspopup="menu" aria-expanded="false" title="사무실에서 쓰는 메뉴">사무실 <span class="caret">▾</span></button>
+        <div class="moremenu" id="moreMenu" role="menu" hidden>
+          <button data-tab="month" role="menuitem">월간 현황</button>
+          <button data-tab="export" role="menuitem">엑셀 반영</button>
+          <button data-tab="settings" role="menuitem">품목·설정</button>
+        </div>
+      </div>
     </nav>
   </div>
 </header>
@@ -384,6 +403,25 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
     </div>
   </section>
 
+  <!-- ===== 재고장 (WMS 기간별 수불현황 ↔ 실수량) ===== -->
+  <section id="tab-ledger" hidden>
+    <div class="datebar">
+      <button class="iconbtn" id="lgPrev" aria-label="전날">‹</button>
+      <input type="date" id="lgDate" aria-label="날짜">
+      <button class="iconbtn" id="lgNext" aria-label="다음날">›</button>
+      <span class="dow" id="lgDow"></span>
+      <button class="btn small" id="lgToday">오늘</button>
+      <span id="lgStatus" class="pill">자료 없음</span>
+    </div>
+    <div class="psum" id="lgSum"></div>
+    <div class="sheet">
+      <h2>재고장 <span class="sub">배송·이동반출이 있는 상품만 · 실수량을 넣으면 WMS 재고와 비교</span>
+        <span class="right"><label class="row" style="font-size:12.5px;font-weight:600;color:var(--muted)"><input type="checkbox" id="lgAll"> 전체 상품 보기</label></span></h2>
+      <div class="tablewrap"><table id="lgTable"></table></div>
+      <div class="body"><p class="note" style="margin:0" id="lgNote">사무실 PC의 <b>아마레 도우미 → 재고장</b>에서 <b>[기간별 수불현황 로드]</b>를 누르면 그날 WMS 재고가 여기에 들어옵니다. 실수량이 WMS 재고수량과 다르면 칸이 <b style="color:var(--bad)">빨간색</b>으로 표시됩니다.</p></div>
+    </div>
+  </section>
+
   <!-- ===== 부자재 관리 ===== -->
   <section id="tab-stock" hidden>
     <div id="stockAlertCard"></div>
@@ -484,7 +522,7 @@ const COMPANIES=[
    types:['세트','라벨','QR','포장','기타'],
    boxes:[['box1','1호 박스'],['box2','2호 박스'],['box3','3호 박스'],['box4','4호(헬스팩)'],['boxEtc','기타 박스']],
    mats:[['lookbook','룩북'],['shopping','쇼핑백'],['tape','테이프']],
-   stock:{task:'세트',kind:'세트',label:'팩 바코드',taskLabel:'세트 작업',unit:'장',parts:null},
+   stock:{task:'세트',kind:'세트',label:'팩 바코드',taskLabel:'세트 작업',unit:'장',parts:null},ledger:true,
    serial:true,helper:true,desc:'세트 · 스티커 · QR · 포장'},
   {id:'lr',name:'엘알헬스앤뷰티',short:'엘알',mark:'LR',prefix:'lr_',
    types:['라벨','포장','세트','기타'],
@@ -840,8 +878,14 @@ $('#nextDay').addEventListener('click',()=>goDate(shiftDate(curDate,1)));
 $('#todayBtn').addEventListener('click',()=>goDate(todayStr()));
 
 /* ---------- tabs ---------- */
-function showTab(k){$$('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===k));['log','month','stock','export','settings'].forEach(t=>$('#tab-'+t).hidden=t!==k);lsSet('tab',k);
-  if(k==='month')renderMonth();if(k==='stock')renderStock();if(k==='export')renderExport();if(k==='settings')renderSettings()}
+const OFFICE_TABS={month:'월간 현황',export:'엑셀 반영',settings:'품목·설정'};
+function showTab(k){$$('.tabs button[data-tab]').forEach(b=>b.classList.toggle('on',b.dataset.tab===k));['log','month','stock','ledger','export','settings'].forEach(t=>$('#tab-'+t).hidden=t!==k);lsSet('tab',k);
+  const mb=$('#moreBtn');mb.classList.toggle('on',!!OFFICE_TABS[k]);mb.innerHTML=(OFFICE_TABS[k]?'사무실 · '+OFFICE_TABS[k]:'사무실')+' <span class="caret">▾</span>';closeMore();
+  if(k==='month')renderMonth();if(k==='stock')renderStock();if(k==='ledger')renderLedger();if(k==='export')renderExport();if(k==='settings')renderSettings()}
+function closeMore(){$('#moreMenu').hidden=true;$('#moreBtn').setAttribute('aria-expanded','false')}
+$('#moreBtn').addEventListener('click',e=>{e.stopPropagation();const m=$('#moreMenu');m.hidden=!m.hidden;$('#moreBtn').setAttribute('aria-expanded',String(!m.hidden))});
+document.addEventListener('click',e=>{if(!e.target.closest('#moreWrap'))closeMore()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMore()});
 $('.tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b)showTab(b.dataset.tab)});
 
 /* ---------- month ---------- */
@@ -1303,6 +1347,60 @@ $('#tab-stock').addEventListener('click',async e=>{
   if(act==='rcvDel'){m.receipts.splice(+b.dataset.i,1);document.activeElement?.blur();await saveStock(items,'입고 내역을 지웠습니다.')}
 });
 
+/* ---------- 재고장 ----------
+ * <업체>stockcheck/<날짜> : 아마레 도우미가 WMS 기간별 수불현황을 올린 것 {date,month,loadedAt,warehouse,items:[{code,name,open,ship,moveOut,setMake,end,...}]}
+ * <업체>stockcount/<날짜> : 현장이 넣은 실수량 {date,month,counts:{code:수량},updatedAt}
+ */
+let lgDate=todayStr(),lgCheck=null,lgCount=null,lgUnsubs=[];
+function ledgerStop(){lgUnsubs.forEach(u=>u());lgUnsubs=[];lgCheck=null;lgCount=null;const b=$('#ledgerBadge');if(b)b.hidden=true}
+function ledgerStart(){
+  ledgerStop();if(!db||!co||!co.ledger)return;
+  const d=lgDate,c1=P('stockcheck'),c2=P('stockcount');
+  lgUnsubs.push(db.doc(c1+'/'+d).onSnapshot(s=>{if(lgDate!==d||P('stockcheck')!==c1)return;lgCheck=s.exists?s.data():null;renderLedger()},e=>toast(errMsg(e))));
+  lgUnsubs.push(db.doc(c2+'/'+d).onSnapshot(s=>{if(lgDate!==d||P('stockcount')!==c2)return;if(!savers[c2+'/'+d]?.pending())lgCount=s.exists?s.data():null;renderLedger()},e=>toast(errMsg(e))));
+}
+function lgGo(ds){if(!ds)return;lgDate=ds;document.activeElement?.blur();ledgerStart();renderLedger()}
+const lgTarget=it=>n0(it.ship)>0||n0(it.moveOut)>0;
+function lgName(it){return it.name||itemBy(it.code)?.name||it.code}
+function renderLedger(){
+  if($('#tab-ledger').hidden||!co)return;
+  $('#lgDate').value=lgDate;$('#lgDow').textContent=dowOf(lgDate)+'요일';
+  const st=$('#lgStatus'),tb=$('#lgTable');
+  if(!lgCheck){st.className='pill';st.textContent='WMS 자료 없음';$('#lgSum').innerHTML='';
+    tb.innerHTML=`<tbody><tr><td class="note" style="white-space:normal;padding:18px">${esc(lgDate.slice(5).replace('-','/'))} 재고 자료가 아직 없습니다. 사무실 <b>아마레 도우미 → 재고장 → [기간별 수불현황 로드]</b>를 눌러 주세요.</td></tr></tbody>`;return}
+  const all=lgCheck.items||[],rows=$('#lgAll').checked?all:all.filter(lgTarget),counts=(lgCount&&lgCount.counts)||{};
+  let done=0,bad=0;rows.forEach(it=>{const v=counts[it.code];if(v!==''&&v!=null){done++;if(n0(v)!==n0(it.end))bad++}});
+  const lt=lgCheck.loadedAt?new Date(lgCheck.loadedAt):null;
+  st.className='pill '+(bad?'bad':done&&done===rows.length?'ok':'warn');st.textContent=bad?`불일치 ${bad}건`:done===rows.length&&rows.length?'모두 일치':`입력 ${done}/${rows.length}`;
+  const bdg=$('#ledgerBadge');bdg.hidden=!bad;bdg.textContent=bad;
+  $('#lgSum').innerHTML=`<div class="s" style="--pc:var(--accent)"><span>대상 상품</span><b>${rows.length}</b></div><div class="s" style="--pc:var(--ok)"><span>실수량 입력</span><b>${done}</b></div><div class="s" style="--pc:var(--bad)"><span>불일치</span><b>${bad}</b></div><div class="s all"><span>WMS 로드</span><b style="font-size:14px">${lt?`${lt.getMonth()+1}/${lt.getDate()} ${String(lt.getHours()).padStart(2,'0')}:${String(lt.getMinutes()).padStart(2,'0')}`:'-'}</b><span>${esc(lgCheck.warehouse||'')}</span></div>`;
+  if(tb.contains(document.activeElement))return;
+  if(!rows.length){tb.innerHTML='<tbody><tr><td class="note" style="white-space:normal;padding:18px">이날 배송·이동반출이 있는 상품이 없습니다. 「전체 상품 보기」를 켜면 모든 상품이 나옵니다.</td></tr></tbody>';return}
+  tb.innerHTML=`<thead><tr><th>상품명</th><th class="n">배송</th><th class="n">이동반출</th><th class="n">세트구성</th><th class="n">WMS 재고</th><th class="n">실수량</th><th class="n">차이</th></tr></thead><tbody>`+
+    rows.map(it=>{const v=counts[it.code];const has=v!==''&&v!=null;const diff=has?n0(v)-n0(it.end):null;const cls=has?(diff===0?'ok':'bad'):'';
+      return `<tr class="${cls?'lg-'+cls:''}"><td style="white-space:normal;min-width:180px"><b>${esc(lgName(it))}</b></td><td class="n">${n0(it.ship)||''}</td><td class="n">${n0(it.moveOut)||''}</td><td class="n">${n0(it.setMake)||''}</td><td class="n"><b>${fmtN(n0(it.end))}</b></td>
+        <td class="n"><input class="in num lgin ${cls}" type="number" inputmode="numeric" data-code="${esc(it.code)}" id="lg-${esc(it.code)}" value="${has?esc(v):''}" placeholder="실수량"></td>
+        <td class="n ${cls?'lgdiff-'+cls:''}">${has?(diff>0?'+'+diff:diff):''}</td></tr>`}).join('')+'</tbody>';
+}
+$('#tab-ledger').addEventListener('input',e=>{
+  const i=e.target;if(!i.dataset.code)return;
+  const d=clone(lgCount||{});d.date=lgDate;d.month=lgDate.slice(0,7);d.counts={...(d.counts||{}),[i.dataset.code]:num(i.value)};d.updatedAt=Date.now();if(lsGet('myName'))d.by=lsGet('myName');
+  lgCount=d;saver(P('stockcount')+'/'+lgDate).push(clone(d));
+  const it=(lgCheck?.items||[]).find(x=>x.code===i.dataset.code);const has=i.value!=='';const ok=has&&n0(i.value)===n0(it?.end);
+  i.classList.toggle('bad',has&&!ok);i.classList.toggle('ok',ok);const tr=i.closest('tr');tr.className=has?(ok?'lg-ok':'lg-bad'):'';
+  const dc=tr.lastElementChild;const diff=has?n0(i.value)-n0(it?.end):null;dc.textContent=has?(diff>0?'+'+diff:diff):'';dc.className='n '+(has?(ok?'lgdiff-ok':'lgdiff-bad'):'');
+  // 요약·배지만 갱신 (표는 입력 중이라 다시 그리지 않음)
+  const rows=($('#lgAll').checked?(lgCheck?.items||[]):(lgCheck?.items||[]).filter(lgTarget));let done=0,bad=0;rows.forEach(x=>{const v=d.counts[x.code];if(v!==''&&v!=null){done++;if(n0(v)!==n0(x.end))bad++}});
+  const st=$('#lgStatus');st.className='pill '+(bad?'bad':done&&done===rows.length?'ok':'warn');st.textContent=bad?`불일치 ${bad}건`:done===rows.length&&rows.length?'모두 일치':`입력 ${done}/${rows.length}`;
+  const bdg=$('#ledgerBadge');bdg.hidden=!bad;bdg.textContent=bad;
+  $$('#lgSum .s b')[1].textContent=done;$$('#lgSum .s b')[2].textContent=bad;
+});
+$('#lgDate').addEventListener('change',e=>lgGo(e.target.value));
+$('#lgPrev').addEventListener('click',()=>lgGo(shiftDate(lgDate,-1)));
+$('#lgNext').addEventListener('click',()=>lgGo(shiftDate(lgDate,1)));
+$('#lgToday').addEventListener('click',()=>lgGo(todayStr()));
+$('#lgAll').addEventListener('change',()=>{document.activeElement?.blur();renderLedger()});
+
 /* 업체 선택 · 전환 */
 function renderCoUI(){
   const last=lsGet('co');
@@ -1322,20 +1420,20 @@ function startData(){
   if(!db||!co)return;
   const mp=masterPath();
   unsubMaster=db.doc(mp).onSnapshot(s=>{if(masterPath()===mp)applyMaster(s.exists?s.data():null)},e=>toast(errMsg(e)));
-  subKey='';ensureSub();renderExport();stockStart();
+  subKey='';ensureSub();renderExport();stockStart();ledgerStart();
 }
 function selectCompany(id){
   if(id==='parcel'){enterParcel();return}
   const c=COMPANIES.find(x=>x.id===id);if(!c)return;
   document.body.classList.remove('no-co','mode-parcel');mode='co';
   if(co&&co.id===id){document.documentElement.dataset.co=id;document.title=`${c.short} 작업일지`;renderCoUI();return}
-  unsubDays&&unsubDays();unsubTasks&&unsubTasks();unsubMaster&&unsubMaster();unsubDays=unsubTasks=unsubMaster=null;stockStop();
+  unsubDays&&unsubDays();unsubTasks&&unsubTasks();unsubMaster&&unsubMaster();unsubDays=unsubTasks=unsubMaster=null;stockStop();ledgerStop();
   document.activeElement?.blur();
   co=c;lsSet('co',id);document.documentElement.dataset.co=id;document.title=`${c.short} 작업일지`;
   days={};tasks={};typesDirty=false;pendingImport=null;$('#importBox').hidden=true;$('#taskList').innerHTML='';
-  $('#toHelper').hidden=!c.helper;$('#taskKinds').textContent=c.desc;
+  $('#toHelper').hidden=!c.helper;$('#taskKinds').textContent=c.desc;$('#ledgerTab').hidden=!c.ledger;
   buildGrids();renderCoUI();applyMaster(null);loadDayLocal();renderDay();renderTasks();
-  const t=lsGet('tab');showTab(t&&$('#tab-'+t)?t:'log');
+  let t=lsGet('tab');if(t==='ledger'&&!c.ledger)t='log';showTab(t&&$('#tab-'+t)?t:'log');
   startData();
 }
 document.addEventListener('click',e=>{const b=e.target.closest('#coCards [data-co], #coSwitch [data-co], #parcelCard');if(b){selectCompany(b.dataset.co);scrollTo(0,0)}});
