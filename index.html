@@ -1399,7 +1399,8 @@ const lgExcluded=it=>!!lgCfg.exclude[it.code];
 function lgName(it){return it.name||itemBy(it.code)?.name||it.code}
 /* 박스 입수: 품목 마스터 값 → 없으면 재고장에서 현장이 넣은 값(ledgercfg.boxQty) */
 /* 박스 입수는 단품에만 (세트·마스터에 없는 상품은 낱개만) */
-const lgIsUnit=it=>{const m=itemBy(it.code);return !!m&&kindOf(m)==='단품'};
+/* 마스터에 없는 상품은 WMS 코드로 판단: 502-S… 는 단품, 502-P… 는 팩 */
+const lgIsUnit=it=>{const m=itemBy(it.code);return m?kindOf(m)==='단품':/-S\d/i.test(String(it.code||''))};
 const lgBoxQty=it=>lgIsUnit(it)?(n0(itemBy(it.code)?.boxQty)||n0(lgCfg.boxQty[it.code])):0;
 async function lgSaveCfg(patch){
   if(!db||readOnly||!co){toast('저장 권한이 없습니다.');return false}
