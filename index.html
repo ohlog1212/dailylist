@@ -1200,43 +1200,29 @@ const fmtAt=ms=>{if(!ms)return '';const d=new Date(ms);return `${d.getMonth()+1}
 function renderStock(){
   const sc=SC(),parts=!!sc.parts;
   const rows=(stock.items||[]).map(m=>({m,c:stockCalc(m)}));
-  const low=rows.filter(r=>r.c.low);
-  const badge=$('#stockBadge');badge.hidden=!low.length;badge.textContent=low.length;
-  const al=$('#stockAlert');
-  if(low.length&&co){al.hidden=false;al.textContent=`⚠ ${sc.label} 발주 필요 ${low.length}건 · ${low.slice(0,3).map(r=>stockFull(r.m)).join(', ')}${low.length>3?' 외':''} — 눌러서 확인`}else al.hidden=true;
+  // 발주 기준(200장) 알림은 현장 화면에 띄우지 않음 — 현장은 [발주]만 누르고, 알림은 아마레 도우미(사무실)에서 봄
+  $('#stockBadge').hidden=true;$('#stockAlert').hidden=true;
   if($('#tab-stock').hidden||!co)return;
   $('#stockTitle').textContent=`${sc.label} 재고`;
   $('#stockAdd').textContent=`+ ${sc.label} 등록`;
   $('#stockNote').innerHTML=parts
-    ?`<b>스티커</b>는 상품마다 <b>앞(안쪽)·뒤</b>를 따로 관리합니다. 일지에 <b>${esc(sc.taskLabel)}</b>을 입력하면 그 수량만큼 앞·뒤 스티커가 각각 자동으로 차감됩니다. 잔여가 발주 기준(기본 ${STOCK_TH}) 이하이면 <b>발주 필요</b>로 표시됩니다.<br>재고수량을 고치거나 엑셀로 올리면, 그 시점의 실제 수량을 기준으로 다시 계산합니다.`
-    :`<b>팩 바코드</b>는 일지에 <b>${esc(sc.taskLabel)}</b>을 입력하면 세트 1개당 1장씩 자동으로 차감됩니다. 잔여가 발주(출력) 기준(기본 ${STOCK_TH}) 이하이면 <b>발주 필요</b>로 표시됩니다.<br>재고수량을 고치거나 엑셀로 올리면, 그 시점의 실제 수량을 기준으로 다시 계산합니다.`;
+    ?`일지에 <b>${esc(sc.taskLabel)}</b>을 입력하면 앞·뒤 스티커가 자동으로 차감됩니다. 모자라면 <b>[발주]</b>를 눌러 주세요.`
+    :`일지에 <b>${esc(sc.taskLabel)}</b>을 입력하면 1개당 1장씩 자동으로 차감됩니다. 모자라면 <b>[발주]</b>를 눌러 주세요 — 사무실에 바로 알림이 갑니다.`;
   const unit=m=>esc(m.unit||sc.unit);
-  $('#stockAlertCard').innerHTML=low.length?`<div class="alertcard"><h3>${esc(sc.label)} 발주 필요 ${low.length}건</h3>
-    <ul>${low.map(r=>`<li><b>${esc(stockFull(r.m))}</b> — 잔여 <b>${fmtN(r.c.remain)}</b>${unit(r.m)} (기준 ${fmtN(r.c.th)}${unit(r.m)})${r.m.orderedAt?` · <span class="pill warn">발주 요청 ${esc(r.m.orderedAt.slice(5).replace('-','/'))}</span>`:''}</li>`).join('')}</ul>
-    <div class="row"><button class="btn small" id="stockCopy" type="button">발주 요청 문구 복사</button><span class="note">카카오톡·메일에 붙여넣어 ${esc(co.name)} 담당자에게 보내세요.</span></div></div>`:'';
+  $('#stockAlertCard').innerHTML='';
   const tb=$('#stockTable');if(tb.contains(document.activeElement))return;
   if(!rows.length){tb.innerHTML=`<tbody><tr><td class="note" style="white-space:normal;padding:18px">등록된 ${esc(sc.label)}가 없습니다. <b>+ ${esc(sc.label)} 등록</b> 또는 <b>엑셀 올리기</b>로 상품과 현재 재고수량을 넣어 주세요.</td></tr></tbody>`;return}
   rows.sort((a,b)=>stockName(a.m).localeCompare(stockName(b.m))||partOrder(a.m.part)-partOrder(b.m.part));
   let prev='';
-  tb.innerHTML=`<thead><tr><th>상품</th>${parts?'<th>구분</th>':''}<th class="n">재고수량</th><th class="n">입고</th><th class="n">사용</th><th class="n">잔여</th><th>상태</th><th></th></tr></thead><tbody>`+
+  tb.innerHTML=`<thead><tr><th>상품</th>${parts?'<th>구분</th>':''}<th class="n">재고수량</th><th class="n">입고</th><th class="n">사용</th><th class="n">잔여</th><th></th></tr></thead><tbody>`+
     rows.map(({m,c})=>{
       const nm=stockName(m),same=parts&&nm===prev;prev=nm;
-      const st=c.low?(m.orderedAt?`<span class="pill warn">발주 요청 ${esc(m.orderedAt.slice(5).replace('-','/'))}</span>`:'<span class="pill bad">발주 필요</span>'):'<span class="pill ok">정상</span>';
-      const cols=parts?8:7;
-      const det=stockOpen===m.id?`<tr class="stkdetail"><td colspan="${cols}"><div class="grid2">
-        <div><h4>입고 등록</h4>
-          <div class="rcvrow"><input class="in num" type="number" inputmode="numeric" id="rcvQty" placeholder="수량" style="width:100px"><input class="in mono" type="date" id="rcvDate" value="${todayStr()}"><input class="in" id="rcvNote" placeholder="메모 (선택)" style="width:140px"><button class="btn small primary" data-sact="rcvAdd" data-id="${m.id}" type="button">입고 추가</button></div>
-          <h4 style="margin-top:12px">입고 내역</h4>${(m.receipts||[]).length?`<ul>${m.receipts.map((r,i)=>`<li class="mono">${esc(r.date)} · +${fmtN(r.qty)}${unit(m)}${r.note?' · '+esc(r.note):''}${rAt(r)<n0(m.baseAt)?' <span class="note">(재고 맞추기 전)</span>':''} <button class="linkbtn" data-sact="rcvDel" data-id="${m.id}" data-i="${i}" type="button">삭제</button></li>`).join('')}</ul>`:'<p class="note" style="margin:0">없음</p>'}</div>
-        <div><h4>최근 사용</h4>${c.uses.length?`<ul>${c.uses.slice(0,12).map(u=>`<li class="mono">${esc(u.date)} · −${fmtN(u.qty)} <span class="note">${esc(sc.taskLabel)}</span></li>`).join('')}${c.uses.length>12?`<li class="note">외 ${c.uses.length-12}건</li>`:''}</ul>`:'<p class="note" style="margin:0">아직 사용 기록이 없습니다.</p>'}
-          ${c.daysLeft!=null?`<p class="note" style="margin:8px 0 0">최근 30일 사용 속도로 약 <b>${fmtN(Math.max(0,c.daysLeft))}일</b> 쓸 수 있습니다.</p>`:''}
-          <p class="note" style="margin:8px 0 0">재고수량 맞춘 시각: ${esc(fmtAt(m.baseAt))}</p></div>
-        </div></td></tr>`:'';
+      const od=m.orderedAt?esc(m.orderedAt.slice(5).replace('-','/')):'';
       return `<tr><td>${same?'<span class="note">〃</span>':`<b>${esc(nm)}</b><div class="note mono">${esc(m.code)}</div>`}</td>${parts?`<td>${esc(m.part||'')}</td>`:''}
         <td class="n">${fmtN(n0(m.opening))}</td><td class="n">${c.rcv?'+'+fmtN(c.rcv):''}</td><td class="n">${c.used?'−'+fmtN(c.used):''}</td>
-        <td class="n"><span class="remain ${c.remain<=0?'bad':c.low?'warn':''}">${fmtN(c.remain)}</span> ${unit(m)}</td><td>${st}</td>
-        <td><div class="row" style="flex-wrap:nowrap"><button class="btn small" data-sact="open" data-id="${m.id}" type="button">${stockOpen===m.id?'닫기':'입고·내역'}</button>
-          ${c.low?`<button class="btn small" data-sact="order" data-id="${m.id}" type="button">${m.orderedAt?'요청 취소':'발주 요청함'}</button>`:''}
-          <button class="btn small" data-sact="edit" data-id="${m.id}" type="button">수정</button><button class="xbtn" data-sact="del" data-id="${m.id}" type="button" aria-label="삭제" style="height:32px">×</button></div></td></tr>${det}`}).join('')+'</tbody>';
+        <td class="n"><span class="remain ${c.remain<=0?'bad':''}">${fmtN(c.remain)}</span> ${unit(m)}</td>
+        <td><div class="row" style="flex-wrap:nowrap"><button class="btn small${od?' primary':''}" data-sact="order" data-id="${m.id}" type="button" title="${od?'발주 요청됨 — 누르면 취소':'사무실에 발주(출력) 요청'}">${od?'발주됨 '+od:'발주'}</button>
+          <button class="btn small" data-sact="edit" data-id="${m.id}" type="button">수정</button><button class="xbtn" data-sact="del" data-id="${m.id}" type="button" aria-label="삭제" style="height:32px">×</button></div></td></tr>`}).join('')+'</tbody>';
 }
 async function saveStock(items,msg){
   if(!db||readOnly||!co){toast('저장할 수 없습니다.');return false}
@@ -1251,7 +1237,6 @@ function openStockForm(m){
     f.innerHTML=`<div class="stkform">
       <div class="f wide2" style="font-size:14px;color:var(--ink)"><b>${esc(stockFull(m))}</b><div class="note mono">${esc(m.code)}</div></div>
       <label class="f">현재 재고수량 (실사)<input class="in num" id="sf-qty" type="number" inputmode="numeric" value="${c.remain}" data-orig="${c.remain}"></label>
-      <label class="f">발주 기준 (이하이면 알림)<input class="in num" id="sf-th" type="number" inputmode="numeric" value="${esc(m.threshold??STOCK_TH)}"></label>
       <label class="f">단위<input class="in" id="sf-unit" value="${esc(m.unit||sc.unit)}"></label>
       <div class="acts"><button class="btn primary" data-sact="formSave" type="button">저장</button><button class="btn" data-sact="formCancel" type="button">취소</button>
         <span class="note">재고수량을 바꾸면 지금부터 그 수량을 기준으로 다시 계산합니다.</span></div></div>`;
@@ -1261,7 +1246,6 @@ function openStockForm(m){
     <label class="f wide2">상품<select class="in" id="sf-code"><option value="">상품 선택</option>${stockProducts().map(i=>`<option value="${esc(i.code)}">${esc(i.name)} · ${esc(i.code)}</option>`).join('')}</select></label>
     ${sc.parts?sc.parts.map((p,i)=>`<label class="f"><span><input type="checkbox" id="sf-p${i}" checked> ${esc(p)} 재고수량</span><input class="in num" id="sf-q${i}" type="number" inputmode="numeric"></label>`).join('')
       :`<label class="f">현재 재고수량<input class="in num" id="sf-q0" type="number" inputmode="numeric"></label>`}
-    <label class="f">발주 기준 (이하이면 알림)<input class="in num" id="sf-th" type="number" inputmode="numeric" value="${STOCK_TH}"></label>
     <label class="f">단위<input class="in" id="sf-unit" value="${esc(sc.unit)}"></label>
     <div class="acts"><button class="btn primary" data-sact="formSave" type="button">등록</button><button class="btn" data-sact="formCancel" type="button">취소</button></div>
   </div>`;
@@ -1340,12 +1324,12 @@ $('#tab-stock').addEventListener('click',async e=>{
   }
   if(act==='formCancel'){stockEdit=null;$('#stockForm').hidden=true;return}
   if(act==='formSave'){
-    const th=$('#sf-th').value===''?STOCK_TH:num($('#sf-th').value),unit=$('#sf-unit').value.trim()||sc.unit;
+    const thEl=$('#sf-th'),th=!thEl||thEl.value===''?STOCK_TH:num(thEl.value),unit=$('#sf-unit').value.trim()||sc.unit;
     if(stockEdit&&stockEdit!=='new'){
       const m=items.find(x=>x.id===stockEdit);if(!m)return;
       const qi=$('#sf-qty'),q=num(qi.value);
       if(qi.value!==''&&String(q)!==qi.dataset.orig){m.opening=q;m.baseAt=now;m.orderedAt=''}
-      m.threshold=th;m.unit=unit;
+      if(thEl)m.threshold=th;m.unit=unit;
       if(await saveStock(items,'저장했습니다.')){stockEdit=null;$('#stockForm').hidden=true}
       return;
     }
@@ -1365,7 +1349,7 @@ $('#tab-stock').addEventListener('click',async e=>{
     if(!b.classList.contains('arm')){b.classList.add('arm');b.textContent='삭제';setTimeout(()=>{b.classList.remove('arm');b.textContent='×'},3000);return}
     items.splice(i,1);document.activeElement?.blur();await saveStock(items,'삭제했습니다.');return;
   }
-  if(act==='order'){m.orderedAt=m.orderedAt?'':todayStr();document.activeElement?.blur();await saveStock(items,m.orderedAt?'발주 요청한 것으로 표시했습니다.':'발주 요청 표시를 지웠습니다.');return}
+  if(act==='order'){m.orderedAt=m.orderedAt?'':todayStr();document.activeElement?.blur();await saveStock(items,m.orderedAt?'발주 요청했습니다. 사무실(아마레 도우미)에 알림이 갑니다.':'발주 요청을 취소했습니다.');return}
   if(act==='rcvAdd'){
     const q=num($('#rcvQty').value);if(!(q>0)){toast('입고 수량을 넣어 주세요.');return}
     const d=$('#rcvDate').value||todayStr();
