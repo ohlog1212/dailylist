@@ -101,6 +101,9 @@ select.in{padding-right:4px}
 /* 가공작업 일시정지 */
 .pausebox{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
 .pausebtn{height:40px;width:100%}
+.sl-pause{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sl-pause .pausebtn{width:auto;height:34px;padding:0 12px}
+.ship.paused{border-style:dashed;border-color:var(--warn)}
 .pausebtn.on{background:var(--warn);border-color:var(--warn);color:var(--surface)}
 .task.paused{border-style:dashed}
 .ship label.f{font-size:11px}
@@ -661,7 +664,12 @@ function renderDay(){
   $$('.ship',list).forEach(r=>{const s=dayLocal.ships[+r.dataset.i];
     $$('[data-s="ship"]',r).forEach(el=>setVal(el,s[el.dataset.f]));
     $$('[data-s="shipbox"]',r).forEach(el=>setVal(el,s.boxes?.[el.dataset.f]));
-    r.querySelector('[data-sbt]').textContent=shipBoxSum(s)});
+    r.querySelector('[data-sbt]').textContent=shipBoxSum(s);
+    const pb=r.querySelector('[data-act="shipPause"]'),open=(s.pauses||[]).find(p=>p.s&&!p.e),pm=pauseMins(s),wm=workMins(s);
+    if(pb){pb.textContent=open?'▶ 재개':'⏸ 일시정지';pb.classList.toggle('on',!!open);pb.disabled=!s.start||(!!s.end&&!open)}
+    r.classList.toggle('paused',!!open);
+    const st=r.querySelector('[data-stime]');if(st)st.innerHTML=open?`<span class="pill warn">⏸ ${esc(open.s)}부터 일시정지 중</span>`:wm!==''?`작업 <b>${wm}</b>분${pm?` · 정지 ${pm}분 제외`:''}`:(pm?`정지 ${pm}분`:'');
+  });
   renderBoxLocks();renderDayTotals();renderStatus();renderConfirm();
 }
 function shipHTML(i){
@@ -672,6 +680,7 @@ function shipHTML(i){
     <div class="ship-l">
       <div class="sl-top"><label class="f">차수<input class="in" list="roundList" data-s="ship" data-f="round" id="s${i}-round"></label>${nIn('count','건수')}${tIn('start','시작')}${tIn('end','종료')}</div>
       <div class="sl-ext">${nIn('add','추가')}${nIn('cancel','송장취소')}${nIn('exch','맞교환')}</div>
+      <div class="sl-pause"><button class="btn small pausebtn" data-act="shipPause" type="button" title="휴식·다른 작업으로 피킹을 멈출 때">⏸ 일시정지</button><span class="note" data-stime></span></div>
     </div>
     <div class="ship-r">
       <div class="sr-h">박스 수량 <b data-sbt>0</b><button class="xbtn" data-act="delShip" type="button" aria-label="차수 삭제">×</button></div>
@@ -733,7 +742,14 @@ $('#daySection').addEventListener('input',e=>{
 });
 $('#daySection').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||b.closest('#taskList'))return;
-  if(b.dataset.act==='shipNow'){const r=b.closest('.ship');const i=+r.dataset.i;dayLocal.ships[i][b.dataset.f]=nowHM();setVal(r.querySelector(`input[data-f="${b.dataset.f}"]`),dayLocal.ships[i][b.dataset.f]);saveDay()}
+  if(b.dataset.act==='shipNow'){const r=b.closest('.ship');const i=+r.dataset.i;const s=dayLocal.ships[i];const n=nowHM();s[b.dataset.f]=n;
+    if(b.dataset.f==='end')s.pauses=(s.pauses||[]).map(p=>p.s&&!p.e?{...p,e:n}:p); // 일시정지 중 종료 → 정지도 그 시각에 끝
+    setVal(r.querySelector(`input[data-f="${b.dataset.f}"]`),s[b.dataset.f]);saveDay();renderDay()}
+  if(b.dataset.act==='shipPause'){const s=dayLocal.ships[+b.closest('.ship').dataset.i];
+    if(!s.start){toast('시작 시각을 먼저 넣어 주세요.');return}
+    const ps=(s.pauses||[]).map(p=>({...p})),open=ps.find(p=>p.s&&!p.e),n=nowHM();
+    if(open)open.e=n;else ps.push({s:n,e:''});
+    s.pauses=ps;saveDay();renderDay();return}
   if(b.dataset.act==='delShip'){
     if(!b.classList.contains('arm')){b.classList.add('arm');b.textContent='삭제';setTimeout(()=>{b.classList.remove('arm');b.textContent='×'},3000);return}
     const was=boxKeys().filter(boxFromShips);
@@ -995,11 +1011,11 @@ $('#exXlsx').addEventListener('click',async()=>{
     S('L',noteOf(t));S('M',t.serialFrom);S('N',t.serialTo)});
   ws['!ref']=`A1:N${rows.length+1}`;ws['!cols']=[{wch:7},{wch:8},{wch:14},{wch:28},{wch:6},{wch:4},{wch:4},{wch:5},{wch:8},{wch:8},{wch:8},{wch:10},{wch:14},{wch:14}];
   XLSX.utils.book_append_sheet(wb,ws,'입력시트');
-  const dayRows=[['날짜','요일','직원','일용직','차수','건수','시작','종료','추가','송장취소','맞교환',...co.boxes.map(b=>b[1])]];
+  const dayRows=[['날짜','요일','직원','일용직','차수','건수','시작','종료','일시정지(분)','작업시간(분)','추가','송장취소','맞교환',...co.boxes.map(b=>b[1])]];
   const MK=co.boxes.concat(co.mats);
   const matRows=[['날짜','출고 건수',...MK.map(x=>x[1]),'특이사항','사무실 확인']];
   Object.values(days).filter(d=>d.month===exMonth).sort((a,b)=>a.date.localeCompare(b.date)).forEach(d=>{
-    (d.ships||[]).forEach(s=>dayRows.push([d.date,dowOf(d.date),d.staff,d.dayWorkers,s.round,s.count,s.start,s.end,s.add,s.cancel,s.exch,...co.boxes.map(b=>s.boxes?.[b[0]]??'')]));
+    (d.ships||[]).forEach(s=>dayRows.push([d.date,dowOf(d.date),d.staff,d.dayWorkers,s.round,s.count,s.start,s.end,pauseMins(s)||'',workMins(s),s.add,s.cancel,s.exch,...co.boxes.map(b=>s.boxes?.[b[0]]??'')]));
     const m=d.mat||{};matRows.push([d.date,shipTotal(d.ships),...MK.map(x=>m[x[0]]),d.memo,d.confirmed?(d.confirmed.by||'확인'):'']);
   });
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(dayRows),'출고피킹');
