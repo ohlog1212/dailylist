@@ -1259,11 +1259,11 @@ const normPart=v=>{v=String(v??'').replace(/\s/g,'');if(!v)return '';if(/앞|안
 $('#stockXlsx').addEventListener('click',async()=>{
   if(!dl||typeof XLSX==='undefined'){toast('이 화면에서는 파일을 저장할 수 없습니다.');return}
   const sc=SC(),parts=!!sc.parts;
-  const head=['상품코드','상품명',...(parts?['구분']:[]),'재고수량','발주기준','단위','입고합계','사용합계','상태'];
+  const head=['상품코드','상품명',...(parts?['구분']:[]),'재고수량','단위','입고합계','사용합계','발주요청'];
   const list=(stock.items||[]).map(m=>({m,c:stockCalc(m)})).sort((a,b)=>stockName(a.m).localeCompare(stockName(b.m))||partOrder(a.m.part)-partOrder(b.m.part));
-  const aoa=[head,...list.map(({m,c})=>[m.code,stockName(m),...(parts?[m.part||'']:[]),c.remain,c.th,m.unit||sc.unit,c.rcv,c.used,c.low?'발주 필요':'정상'])];
+  const aoa=[head,...list.map(({m,c})=>[m.code,stockName(m),...(parts?[m.part||'']:[]),c.remain,m.unit||sc.unit,c.rcv,c.used,m.orderedAt||''])];
   if(!list.length){ // 빈 양식: 품목 마스터로 채움
-    stockProducts().forEach(i=>{(parts?sc.parts:['']).forEach(p=>aoa.push([i.code,i.name,...(parts?[p]:[]),'',STOCK_TH,sc.unit,'','','']))});
+    stockProducts().forEach(i=>{(parts?sc.parts:['']).forEach(p=>aoa.push([i.code,i.name,...(parts?[p]:[]),'',sc.unit,'','','']))});
   }
   const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=head.map((h,i)=>({wch:i===1?34:i===0?14:10}));
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'재고');
