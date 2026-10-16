@@ -139,6 +139,14 @@ label.btn{display:inline-flex;align-items:center}
 .tasks{display:flex;flex-direction:column;gap:10px}
 .task{border:1px solid var(--line);border-left:5px solid var(--tc,var(--t-etc));border-radius:var(--r);background:var(--surface);min-width:0}
 .task[data-type="세트"]{--tc:var(--t-set)} .task[data-type="라벨"]{--tc:var(--t-label)} .task[data-type="QR"]{--tc:var(--t-qr)} .task[data-type="포장"]{--tc:var(--t-pack)}
+/* 타업체 지원 */
+:root{--t-sup:#a23b4a} @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--t-sup:#ec8f9b}} :root[data-theme="dark"]{--t-sup:#ec8f9b}
+.task[data-type="지원"]{--tc:var(--t-sup);background:color-mix(in srgb,var(--surface) 92%,var(--t-sup))}
+.suptag{display:inline-flex;align-items:center;height:30px;padding:0 10px;border-radius:99px;background:var(--tc);color:var(--surface);font-size:12.5px;font-weight:700}
+.restbtn{height:40px;padding:0 10px;font-size:13px}
+.restbtn.on{background:var(--warn);border-color:var(--warn);color:var(--surface)}
+.restrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.restrow .in{width:auto;min-width:0}
 .task-head{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .chips{display:flex;gap:4px;flex-wrap:wrap}
 .chip{height:30px;padding:0 10px;border-radius:99px;border:1px solid var(--line);background:var(--surface);font-size:12.5px;font-weight:600;cursor:pointer;color:var(--muted)}
@@ -380,16 +388,11 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
           <h2>출고 박스 수량 <span class="right"><span id="boxCheck" class="pill">박스 합계 0</span></span></h2>
           <div class="body">
             <div class="matgrid" id="boxGrid"></div>
+            <div class="matgrid" id="matGrid" hidden></div>
             <p class="note" id="boxDerivedNote" style="margin:0" hidden>파란 칸은 위 출고·피킹 차수별 박스를 자동으로 합친 값입니다. 고치려면 차수 칸에서 수정하세요.</p>
           </div>
         </div>
 
-        <div class="sheet">
-          <h2>부자재 사용</h2>
-          <div class="body">
-            <div class="matgrid" id="matGrid"></div>
-          </div>
-        </div>
 
         <div class="sheet">
           <h2>가공작업 <span class="sub" id="taskKinds">세트 · 스티커 · 포장 · 기타</span><span class="right" id="taskSum"></span></h2>
@@ -550,7 +553,7 @@ const COMPANIES=[
   {id:'amare',name:'아마레코리아',short:'아마레',mark:'AMARE',prefix:'',
    types:['세트','라벨','QR','포장','기타'],
    boxes:[['box1','1호 박스'],['box2','2호 박스'],['box3','3호 박스'],['box4','4호(헬스팩)'],['boxEtc','기타 박스']],
-   mats:[['lookbook','룩북'],['shopping','쇼핑백'],['tape','테이프']],
+   mats:[['tape','테이프']],
    stock:{task:'세트',kind:'세트',label:'팩 바코드',taskLabel:'세트 작업',unit:'장',parts:null},ledger:true,
    serial:true,helper:true,desc:'세트 · 스티커 · QR · 포장'},
   {id:'lr',name:'엘알헬스앤뷰티',short:'엘알',mark:'LR',prefix:'lr_',
@@ -767,9 +770,61 @@ $('#addShip').addEventListener('click',()=>{
 /* ---------- tasks ---------- */
 function tasksForDate(ds){return Object.entries(tasks).filter(([,t])=>t.date===ds).sort((a,b)=>(a[1].createdAt||0)-(b[1].createdAt||0))}
 function renderAddButtons(){
-  $('#addTaskRow').innerHTML=master.types.map(t=>`<button class="btn" data-add="${esc(t)}" type="button">+ ${esc(tl(t))}</button>`).join('');
+  $('#addTaskRow').innerHTML=master.types.map(t=>`<button class="btn" data-add="${esc(t)}" type="button">+ ${esc(tl(t))}</button>`).join('')
+    +`<button class="btn" data-add="지원" type="button" style="border-color:var(--t-sup);color:var(--t-sup)" title="다른 층·다른 업체 작업을 도와준 시간">+ 타업체 지원</button>`;
 }
-$('#addTaskRow').addEventListener('click',e=>{const b=e.target.closest('[data-add]');if(b)addTask(b.dataset.add)});
+$('#addTaskRow').addEventListener('click',e=>{const b=e.target.closest('[data-add]');if(b){if(b.dataset.add==='지원')addSupport();else addTask(b.dataset.add)}});
+/* ---------- 타업체 지원 ----------
+ * tasks 에 type:'지원' 으로 저장. {supCo:업체, people:인원, name:내용, start, end, breaks:휴식횟수(0~3, 1회 15분), lunch:점심(60분), minutes}
+ * 지원시간(분) = 종료 − 시작 − 휴식 15분×횟수 − 점심 60분.  업체 목록은 품목 마스터 문서의 supportCos 에 보관(모든 기기 공유)
+ */
+const SUP_BREAK=15,SUP_LUNCH=60;
+const isSup=t=>t&&t.type==='지원';
+function supMins(t){const m=mins(t.start,t.end);if(m==='')return '';return Math.max(0,m-SUP_BREAK*n0(t.breaks)-(t.lunch?SUP_LUNCH:0))}
+const calcMins=t=>isSup(t)?supMins(t):workMins(t);
+function supCos(){return (master.supportCos||[]).slice()}
+function addSupport(){
+  const id=newId();const prev=Object.values(tasks).filter(isSup).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))[0];
+  const t={date:curDate,month:curMonth,type:'지원',supCo:prev?prev.supCo:'',people:'',name:'',start:'',end:'',breaks:0,lunch:false,minutes:'',code:'',qty:'',note:'',exported:false,createdAt:Date.now()};
+  commitTask(id,t,0);renderTasks();
+  const el=$(`.task[data-id="${id}"]`);el?.scrollIntoView({block:'nearest'});el?.querySelector(t.supCo?'[data-f="people"]':'[data-f="supCo"]')?.focus();
+}
+async function addSupportCo(name){
+  name=String(name||'').trim();if(!name)return '';
+  const list=supCos();if(!list.includes(name)){list.push(name);if(!(await saveMaster(master.items,null,`${name} 업체를 추가했습니다.`,list)))return ''}
+  return name;
+}
+function supCoOptions(sel){
+  const list=supCos();if(sel&&!list.includes(sel))list.push(sel);
+  return '<option value="">업체 선택</option>'+list.map(c=>`<option value="${esc(c)}"${c===sel?' selected':''}>${esc(c)}</option>`).join('')+'<option value="__new">+ 새 업체 추가…</option>';
+}
+function makeSupEl(id){
+  const el=document.createElement('div');el.className='task';el.dataset.id=id;el.dataset.type='지원';
+  const tIn=(f,l)=>`<label class="f c2 c1h">${l}<span class="timein"><input class="in mono" type="time" data-f="${f}" id="${id}-${f}"><button class="nowbtn" data-act="now" data-f="${f}" type="button">지금</button></span></label>`;
+  el.innerHTML=`<div class="task-head"><span class="suptag">타업체 지원</span><label class="f" style="flex:1;min-width:160px;max-width:320px"><select class="in" data-f="supCo" id="${id}-supCo" style="height:36px" aria-label="지원 업체"></select></label><span class="sp"></span><button class="xbtn" data-act="del" type="button" aria-label="지원 삭제">×</button></div>
+  <div class="task-grid">
+    <label class="f c2 c1h">인원<input class="in num" type="number" inputmode="numeric" data-f="people" id="${id}-people" placeholder="명"></label>
+    <label class="f c4">내용<input class="in" data-f="name" id="${id}-name" placeholder="예: 피킹 지원, 상차 지원"></label>
+    ${tIn('start','시작')}${tIn('end','종료')}
+    <div class="f c2 restrow" style="align-self:end">휴식 <select class="in" data-f="breaks" id="${id}-breaks" aria-label="휴식 횟수" style="height:40px"><option value="0">없음</option><option value="1">1회 (−15분)</option><option value="2">2회 (−30분)</option><option value="3">3회 (−45분)</option></select>
+      <button class="btn restbtn" data-act="lunch" type="button">🍚 점심 −60분</button></div>
+    <label class="f c2">지원시간(분)<input class="in num" type="number" inputmode="numeric" data-f="minutes" id="${id}-minutes" readonly></label>
+  </div>
+  <div class="task-foot" data-foot></div>`;
+  return el;
+}
+function fillSup(el,t){
+  const sel=el.querySelector('[data-f="supCo"]');const key=(master._v||'')+'|'+(t.supCo||'');
+  if(sel.dataset.k!==key){sel.innerHTML=supCoOptions(t.supCo||'');sel.dataset.k=key}
+  setVal(sel,t.supCo||'');
+  ['people','name','start','end','breaks','minutes'].forEach(f=>setVal(el.querySelector(`[data-f="${f}"]`),f==='breaks'?String(n0(t.breaks)):(f==='minutes'?supMins(t):t[f])));
+  const lb=el.querySelector('[data-act="lunch"]');lb.classList.toggle('on',!!t.lunch);lb.textContent=t.lunch?'🍚 점심 −60분 ✓':'🍚 점심 −60분';
+  const f=[];const raw=mins(t.start,t.end);
+  if(raw!==''){const ded=SUP_BREAK*n0(t.breaks)+(t.lunch?SUP_LUNCH:0);f.push(`근무 ${fmtMin(raw)}${ded?` − 휴식·점심 ${ded}분`:''} = <b>${fmtMin(supMins(t))}</b> 지원`);
+    if(n0(t.people)>0)f.push(`${n0(t.people)}명 × ${fmtMin(supMins(t))} = <b>${fmtMin(supMins(t)*n0(t.people))}</b>`)}
+  if(t.exported)f.push('<span class="pill ok">엑셀 반영됨</span>');
+  el.querySelector('[data-foot]').innerHTML=f.join(' · ');el.querySelector('[data-foot]').hidden=!f.length;
+}
 function newId(){try{if(db)return db.collection(P('tasks')).doc().id}catch{}return 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 function addTask(type){
   const id=newId();const prev=tasksForDate(curDate).at(-1)?.[1];
@@ -818,6 +873,7 @@ function makeTaskEl(id){
   return el;
 }
 function fillTask(el,t){
+  if(isSup(t)){fillSup(el,t);return}
   el.dataset.type=t.type;
   $$('.chip',el).forEach(c=>c.classList.toggle('on',c.dataset.v===t.type));
   const cur=itemBy(t.code);const want=kindFor(t.type);const extra=cur&&want!=='전체'&&kindOf(cur)!==want?t.code:'';
@@ -844,15 +900,16 @@ function fillTask(el,t){
 function renderTasks(){
   const list=$('#taskList');const items=tasksForDate(curDate);
   const ex=new Map($$('.task',list).map(el=>[el.dataset.id,el]));
-  items.forEach(([id,t],i)=>{let el=ex.get(id);ex.delete(id);if(!el||el.dataset.tk!==master._v){if(el)el.remove();el=makeTaskEl(id);el.dataset.tk=master._v}fillTask(el,t);if(list.children[i]!==el)list.insertBefore(el,list.children[i]||null)});
+  items.forEach(([id,t],i)=>{let el=ex.get(id);ex.delete(id);const kind=isSup(t)?'sup':'task';if(!el||el.dataset.tk!==master._v||el.dataset.kind!==kind){if(el)el.remove();el=isSup(t)?makeSupEl(id):makeTaskEl(id);el.dataset.tk=master._v;el.dataset.kind=kind}fillTask(el,t);if(list.children[i]!==el)list.insertBefore(el,list.children[i]||null)});
   ex.forEach(el=>el.remove());
   $('#taskEmpty').hidden=items.length>0;
   renderStatus();
 }
 $('#taskList').addEventListener('input',e=>{
-  const i=e.target,f=i.dataset.f;if(!f||f==='itemSel'||f==='worker')return;
+  const i=e.target,f=i.dataset.f;if(!f||f==='itemSel'||f==='worker'||f==='supCo')return;
   const el=i.closest('.task'),id=el.dataset.id;const t={...tasks[id]};
   let v=i.type==='number'?num(i.value):i.value;t[f]=v;
+  if(isSup(t)){if(f==='breaks')t.breaks=n0(v);if(f==='minutes')return;t.minutes=supMins(t);commitTask(id,t);fillSup(el,t);renderDayTotals();return}
   if(f==='minutes')t.minutesManual=v!=='';
   if((f==='start'||f==='end')&&!t.minutesManual)t.minutes=workMins(t);
   if(f==='qty'||f==='serialFrom'){const to=calcSerialTo(t.serialFrom,t.qty);if(to)t.serialTo=to}
@@ -860,8 +917,13 @@ $('#taskList').addEventListener('input',e=>{
   commitTask(id,t);fillTask(el,t);renderDayTotals();
 });
 $('#taskList').addEventListener('change',e=>{
-  const i=e.target,f=i.dataset.f;if(f!=='itemSel'&&f!=='worker')return;
+  const i=e.target,f=i.dataset.f;if(f!=='itemSel'&&f!=='worker'&&f!=='supCo')return;
   const el=i.closest('.task'),id=el.dataset.id;const t={...tasks[id]};
+  if(f==='supCo'){
+    if(i.value==='__new'){const nm=prompt('지원한 업체 이름을 넣어 주세요. (목록에 저장되어 다음부터 바로 고를 수 있습니다)');setVal(i,t.supCo||'');
+      if(nm&&nm.trim())addSupportCo(nm).then(c=>{if(!c)return;const t2={...tasks[id],supCo:c};commitTask(id,t2,0);fillSup(el,t2)});return}
+    t.supCo=i.value;commitTask(id,t,0);fillSup(el,t);return;
+  }
   if(f==='worker')t.worker=i.value;
   else{
     if(i.value==='__custom'){el.dataset.custom='1';if(itemBy(t.code)){t.code='';t.name=''}}
@@ -877,7 +939,8 @@ $('#taskList').addEventListener('click',e=>{
     case 'type':t.type=b.dataset.v;break;
     case 'now':{const n=nowHM();t[b.dataset.f]=n;
       if(b.dataset.f==='end'){t.pauses=(t.pauses||[]).map(p=>p.s&&!p.e?{...p,e:n}:p)} // 일시정지 중 종료 → 정지도 그 시각에 끝
-      if(!t.minutesManual)t.minutes=workMins(t);break}
+      if(isSup(t))t.minutes=supMins(t);else if(!t.minutesManual)t.minutes=workMins(t);break}
+    case 'lunch':t.lunch=!t.lunch;t.minutes=supMins(t);break;
     case 'autoMin':t.minutesManual=false;t.minutes=workMins(t);break;
     case 'pause':{
       if(!t.start){toast('작업 시작을 먼저 눌러 주세요.');return}
@@ -951,7 +1014,7 @@ function renderMonth(){
     all.map(dt=>{const d=days[dt];const tt=ts.filter(t=>t.date===dt);const sc=shipTotal(d?.ships);const bx=d?boxKeys().reduce((a,f)=>a+n0(d.mat?.[f]),0):0;
       return `<tr class="click" data-go="${dt}"><td class="mono">${dt.slice(5)} (${dowOf(dt)})</td><td class="n">${sc||''}</td><td class="n">${tt.reduce((a,t)=>a+n0(t.qty),0)||''}</td><td class="n">${tt.reduce((a,t)=>a+n0(t.minutes),0)||''}</td><td class="n">${bx||''}</td><td>${d?.confirmed?'<span class="pill ok">확인</span>':'<span class="pill warn">작성 중</span>'}</td></tr>`}).join('')+'</tbody>'
     :'<tbody><tr><td class="note" style="white-space:normal;padding:18px">이 달에 기록된 일지가 없습니다. 일지 작성 탭에서 입력하면 여기에 바로 집계됩니다.</td></tr></tbody>';
-  const by={};ts.forEach(t=>{const k=t.code||t.name;const o=by[k]||(by[k]={type:t.type,name:t.name,code:t.code,qty:0,min:0,n:0});o.qty+=n0(t.qty);o.min+=n0(t.minutes);o.n++});
+  const by={};ts.forEach(t=>{const k=isSup(t)?'지원|'+(t.supCo||''):(t.code||t.name);const o=by[k]||(by[k]={type:isSup(t)?'타업체 지원':t.type,name:isSup(t)?(t.supCo||'업체 미지정'):t.name,code:isSup(t)?'':t.code,qty:0,min:0,n:0});o.qty+=n0(t.qty);o.min+=n0(t.minutes);o.n++});
   const rows=Object.values(by).sort((a,b)=>a.type.localeCompare(b.type)||b.qty-a.qty);
   $('#itemTable').innerHTML=rows.length?`<thead><tr><th>구분</th><th>상품명</th><th>코드</th><th class="n">수량</th><th class="n">시간(분)</th><th class="n">개/분</th><th class="n">건</th></tr></thead><tbody>`+
     rows.map(r=>`<tr><td>${esc(tl(r.type))}</td><td>${esc(r.name)}</td><td class="mono">${esc(r.code)}</td><td class="n">${r.qty.toLocaleString()}</td><td class="n">${r.min.toLocaleString()}</td><td class="n">${r.min?(r.qty/r.min).toFixed(2):''}</td><td class="n">${r.n}</td></tr>`).join('')+'</tbody>'
@@ -983,7 +1046,7 @@ $('#exMonth').addEventListener('change',e=>{if(e.target.value){exMonth=e.target.
 $('#exOnlyNew').addEventListener('change',renderExport);
 function exportRows(){
   const only=$('#exOnlyNew').checked;
-  return Object.entries(tasks).filter(([,t])=>t.month===exMonth&&(t.code||t.name)&&(!only||!t.exported))
+  return Object.entries(tasks).filter(([,t])=>t.month===exMonth&&!isSup(t)&&(t.code||t.name)&&(!only||!t.exported))
     .sort((a,b)=>(a[1].date+(a[1].createdAt||0)).localeCompare(b[1].date+(b[1].createdAt||0))||(a[1].createdAt-b[1].createdAt));
 }
 function noteOf(t){return [t.worker&&t.worker!=='직원'?t.worker:'',t.note||''].filter(Boolean).join(' ')}
@@ -1019,7 +1082,10 @@ $('#exXlsx').addEventListener('click',async()=>{
     const m=d.mat||{};matRows.push([d.date,shipTotal(d.ships),...MK.map(x=>m[x[0]]),d.memo,d.confirmed?(d.confirmed.by||'확인'):'']);
   });
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(dayRows),'출고피킹');
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(matRows),'부자재_특이사항');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(matRows),'테이프_특이사항');
+  const supRows=[['날짜','업체','인원','내용','시작','종료','휴식(회)','점심','지원시간(분)','인원×시간(분)']];
+  Object.values(tasks).filter(t=>t.month===exMonth&&isSup(t)).sort((a,b)=>(a.date+(a.start||'')).localeCompare(b.date+(b.start||''))).forEach(t=>supRows.push([t.date,t.supCo||'',n0(t.people)||'',t.name||'',t.start||'',t.end||'',n0(t.breaks)||'',t.lunch?'Y':'',supMins(t),supMins(t)!==''?supMins(t)*(n0(t.people)||1):'']));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(supRows),'타업체지원');
   const buf=XLSX.write(wb,{type:'array',bookType:'xlsx'});
   try{await dl.save({filename:`${exMonth} ${co.short} 작업일지_입력시트.xlsx`,data:new Blob([buf])});toast('파일을 저장했습니다. 현황 엑셀에 넣은 뒤 "반영 완료로 표시"를 눌러 주세요.')}
   catch(e){if(e?.code==='declined')return;if(e?.code==='rate_limited'){toast('저장 창이 이미 열려 있습니다.');return}toast('이 화면에서는 파일을 저장할 수 없습니다. 붙여넣기용 복사를 이용하세요.')}
@@ -1069,9 +1135,9 @@ function renderSettings(){
 }
 function rowVals(tr){const g=k=>tr.querySelector(`[data-k="${k}"]`).value.trim();const bq=num(g('boxQty'));return{code:g('code'),name:g('name'),kind:g('kind')||'세트',boxQty:bq>0?bq:''}}
 function cleanItem(i){const{type,...rest}=i;const o={...rest,kind:kindOf(i)};if(!(n0(i.boxQty)>0)||o.kind!=='단품')delete o.boxQty;else o.boxQty=n0(i.boxQty);return o}
-async function saveMaster(items,types,msg){
+async function saveMaster(items,types,msg,supportCos){
   if(!db||readOnly){toast('저장 권한이 없어 품목을 바꿀 수 없습니다.');return false}
-  const doc={types:types||master.types,items:items.map(cleanItem),updatedAt:Date.now()};
+  const doc={types:types||master.types,items:items.map(cleanItem),supportCos:supportCos||master.supportCos||[],updatedAt:Date.now()};
   if(!co)return false;
   try{await db.doc(masterPath()).set(doc);applyMaster(doc);if(msg)toast(msg);return true}catch(e){toast(errMsg(e));return false}
 }
@@ -1170,7 +1236,7 @@ $('#tplBtn').addEventListener('click',async()=>{
 });
 
 /* ---------- boot ---------- */
-function applyMaster(d){const def=co?co.types:DEFAULT_TYPES;master={types:(d&&d.types&&d.types.length)?d.types:def.slice(),items:(d&&d.items)||[],_v:(co?co.id:'')+String(d?.updatedAt||0)};
+function applyMaster(d){const def=co?co.types:DEFAULT_TYPES;master={types:(d&&d.types&&d.types.length)?d.types:def.slice(),items:(d&&d.items)||[],supportCos:(d&&d.supportCos)||[],_v:(co?co.id:'')+String(d?.updatedAt||0)};
   renderAddButtons();renderTasks();renderSettings()}
 
 /* ---------- 부자재 관리 ----------
@@ -1511,8 +1577,9 @@ function renderCoUI(){
 let mode='home';
 function buildGrids(){
   const inp=([k,l])=>`<label class="f">${esc(l)}<input class="in num" id="m-${k}" data-s="mat" data-f="${k}" type="number" inputmode="numeric"></label>`;
-  $('#boxGrid').innerHTML=co?co.boxes.map(inp).join(''):'';
-  $('#matGrid').innerHTML=co?co.mats.map(inp).join(''):'';
+  // 테이프는 출고 박스 수량 줄에서 기타 박스 옆에 (박스 합계에는 포함하지 않음)
+  $('#boxGrid').innerHTML=co?co.boxes.concat(co.mats).map(inp).join(''):'';
+  $('#matGrid').innerHTML='';
 }
 function startData(){
   if(!db||!co)return;
