@@ -443,9 +443,10 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
     <div class="psum" id="lgSum"></div>
     <div class="sheet">
       <h2>재고장 <span class="sub">배송·이동반출·세트구성·해체가 있는 상품 · 실수량 = 박스 × 입수 + 낱개</span>
-        <span class="right"><label class="row" style="font-size:12.5px;font-weight:600;color:var(--muted)"><input type="checkbox" id="lgAll"> 전체 상품 보기</label></span></h2>
+        <span class="right"><label class="row" style="font-size:12.5px;font-weight:600;color:var(--muted)"><input type="checkbox" id="lgAll"> 전체 상품 보기</label>
+          <label class="btn small" for="lgFile" title="WMS 기간별 수불현황을 엑셀로 내보낸 파일을 이 날짜 재고장에 넣습니다">WMS 엑셀 올리기</label><input type="file" id="lgFile" accept=".xlsx,.xls,.csv" hidden></span></h2>
       <div class="tablewrap"><table id="lgTable"></table></div>
-      <div class="body"><p class="note" style="margin:0" id="lgNote">사무실 PC의 <b>아마레 도우미 → 재고장</b>에서 <b>[기간별 수불현황 로드]</b>를 누르면 그날 WMS 재고가 여기에 들어옵니다. 실수량이 WMS 재고수량과 다르면 칸이 <b style="color:var(--bad)">빨간색</b>으로 표시됩니다.</p></div>
+      <div class="body"><p class="note" style="margin:0" id="lgNote">WMS 재고는 사무실 PC의 <b>아마레 도우미 → 재고장 → [기간별 수불현황 로드]</b>(아마레)로 들어오거나, WMS에서 내보낸 기간별 수불현황 엑셀을 <b>[WMS 엑셀 올리기]</b>로 넣으면 됩니다. 실수량이 WMS 재고수량과 다르면 칸이 <b style="color:var(--bad)">빨간색</b>으로 표시됩니다.</p></div>
     </div>
   </section>
 
@@ -561,7 +562,7 @@ const COMPANIES=[
    boxes:[['box1','1호 박스'],['box2','2호 박스'],['box3','3호 박스'],['box4','4호 박스'],['box5','5호 박스'],['boxEtc','기타 박스']],
    mats:[['tape','테이프']],
    stock:{task:'라벨',kind:'단품',label:'스티커',taskLabel:'스티커 작업',unit:'개',parts:['앞(안쪽)','뒤']},
-   serial:false,helper:false,desc:'스티커 · 포장 · 세트 · 기타'},
+   serial:false,helper:false,ledger:true,desc:'스티커 · 포장 · 세트 · 기타'},
 ];
 let co=null;
 const P=name=>(co?co.prefix:'')+name;                 // 컬렉션 이름
@@ -1503,7 +1504,7 @@ function renderLedger(){
   $('#lgDate').value=lgDate;$('#lgDow').textContent=dowOf(lgDate)+'요일';
   const st=$('#lgStatus'),tb=$('#lgTable');
   if(!lgCheck){st.className='pill';st.textContent='WMS 자료 없음';$('#lgSum').innerHTML='';
-    tb.innerHTML=`<tbody><tr><td class="note" style="white-space:normal;padding:18px">${esc(lgDate.slice(5).replace('-','/'))} 재고 자료가 아직 없습니다. 사무실 <b>아마레 도우미 → 재고장 → [기간별 수불현황 로드]</b>를 눌러 주세요.</td></tr></tbody>`;return}
+    tb.innerHTML=`<tbody><tr><td class="note" style="white-space:normal;padding:18px">${esc(lgDate.slice(5).replace('-','/'))} 재고 자료가 아직 없습니다. ${co.helper?'사무실 <b>아마레 도우미 → 재고장 → [기간별 수불현황 로드]</b>를 누르거나, ':''}WMS에서 이날 <b>기간별 수불현황</b>을 엑셀로 내보내 위의 <b>[WMS 엑셀 올리기]</b>로 넣어 주세요.</td></tr></tbody>`;return}
   const rows=lgRows(),counts=(lgCount&&lgCount.counts)||{};
   const {done,bad}=lgPaintStatus(rows,counts);
   const lt=lgCheck.loadedAt?new Date(lgCheck.loadedAt):null;
@@ -1557,6 +1558,36 @@ $('#lgPrev').addEventListener('click',()=>lgGo(shiftDate(lgDate,-1)));
 $('#lgNext').addEventListener('click',()=>lgGo(shiftDate(lgDate,1)));
 $('#lgToday').addEventListener('click',()=>lgGo(todayStr()));
 $('#lgAll').addEventListener('change',()=>{document.activeElement?.blur();renderLedger()});
+/* WMS 기간별 수불현황 엑셀을 작업일지에서 바로 올리기 (도우미가 없는 업체용 · 아마레도 대체 경로로 사용 가능) */
+function parseLedgerBook(wb){
+  const map=[['code',/상품코드|품목코드|제품코드|SKU/i],['name',/상품명|품목명|제품명|품명/],['open',/기초/],['inQty',/^입고/],['ship',/배송/],['moveIn',/이동반입|이동입고/],['moveOut',/이동반출|이동출고/],['setMake',/세트구성/],['setBreak',/세트해체/],['adj',/조정/],['ret',/반품/],['end',/기말/]];
+  for(const sn of wb.SheetNames){
+    const aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:'',raw:false});
+    for(let h=0;h<Math.min(aoa.length,12);h++){
+      const hd=(aoa[h]||[]).map(x=>String(x).replace(/\s/g,''));
+      const ci=hd.findIndex(x=>/상품코드|품목코드|제품코드|SKU/i.test(x));if(ci<0)continue;
+      const col={};map.forEach(([k,re])=>{const i=hd.findIndex(x=>x&&re.test(x));if(i>=0&&!(k in col))col[k]=i});
+      const known=new Set(Object.values(col));const items=[];
+      aoa.slice(h+1).forEach(r=>{const code=String(r[col.code]??'').trim();if(!code||/^(합계|총계|소계)/.test(code))return;
+        const o={code};map.forEach(([k])=>{if(k==='code'||!(k in col))return;const t=String(r[col[k]]??'').trim();if(k==='name')o.name=t;else o[k]=Number(t.replace(/,/g,''))||0});
+        const ex={};hd.forEach((hname,i)=>{if(known.has(i)||!hname)return;const t=String(r[i]??'').trim();if(t)ex[hname]=t});if(Object.keys(ex).length)o.extra=ex;
+        if(!o.name&&itemBy(code))o.name=itemBy(code).name;items.push(o)});
+      if(items.length)return {items,headers:hd.filter(Boolean)};
+    }
+  }
+  return null;
+}
+$('#lgFile').addEventListener('change',async e=>{
+  const f=e.target.files[0];e.target.value='';if(!f)return;
+  if(!db||readOnly){toast('저장 권한이 없습니다.');return}
+  if(typeof XLSX==='undefined'){toast('엑셀 도구를 불러오지 못했습니다. 새로고침 후 다시 해 주세요.');return}
+  let r=null;try{r=parseLedgerBook(XLSX.read(await f.arrayBuffer(),{type:'array'}))}catch{toast('파일을 읽지 못했습니다. WMS에서 내보낸 엑셀(.xls/.xlsx)인지 확인해 주세요.');return}
+  if(!r){toast('"상품코드" 제목이 있는 줄을 찾지 못했습니다. 기간별 수불현황 엑셀인지 확인해 주세요.');return}
+  const nT=r.items.filter(lgTarget).length;
+  if(!confirm(`${f.name}\n상품 ${r.items.length}개 (배송·이동반출·세트 ${nT}개)를 ${lgDate.slice(5).replace('-','/')} ${co.short} 재고장에 넣을까요?${lgCheck?'\n\n※ 이미 있는 이날 자료를 덮어씁니다.':''}`))return;
+  const doc={date:lgDate,month:lgDate.slice(0,7),loadedAt:Date.now(),warehouse:'Picking Zone',source:'file',file:f.name,by:lsGet('myName')||'',items:r.items};
+  try{await db.doc(P('stockcheck')+'/'+lgDate).set(doc);lgCheck=doc;renderLedger();toast(`재고장에 ${r.items.length}개 상품을 넣었습니다.`)}catch(er){toast(errMsg(er))}
+});
 /* 품목·설정 탭의 「재고장 제외 상품」 목록 */
 function renderLgExclude(){
   const box=$('#lgExBox');if(!box)return;const ex=lgCfg.exclude||{};const codes=Object.keys(ex);
