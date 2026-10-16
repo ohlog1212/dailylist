@@ -1570,7 +1570,7 @@ function parseLedgerBook(wb){
       const known=new Set(Object.values(col));const items=[];
       aoa.slice(h+1).forEach(r=>{const code=String(r[col.code]??'').trim();if(!code||/^(합계|총계|소계)/.test(code))return;
         const o={code};map.forEach(([k])=>{if(k==='code'||!(k in col))return;const t=String(r[col[k]]??'').trim();if(k==='name')o.name=t;else o[k]=Number(t.replace(/,/g,''))||0});
-        const ex={};hd.forEach((hname,i)=>{if(known.has(i)||!hname)return;const t=String(r[i]??'').trim();if(t)ex[hname]=t});if(Object.keys(ex).length)o.extra=ex;
+        // 구글 시트 한 칸(50,000자) 안에 들어가야 하므로 수량 열만 저장 (브랜드·바코드 같은 부가 열은 뺌)
         if(!o.name&&itemBy(code))o.name=itemBy(code).name;items.push(o)});
       if(items.length)return {items,headers:hd.filter(Boolean)};
     }
@@ -1585,8 +1585,16 @@ $('#lgFile').addEventListener('change',async e=>{
   if(!r){toast('"상품코드" 제목이 있는 줄을 찾지 못했습니다. 기간별 수불현황 엑셀인지 확인해 주세요.');return}
   const nT=r.items.filter(lgTarget).length;
   if(!confirm(`${f.name}\n상품 ${r.items.length}개 (배송·이동반출·세트 ${nT}개)를 ${lgDate.slice(5).replace('-','/')} ${co.short} 재고장에 넣을까요?${lgCheck?'\n\n※ 이미 있는 이날 자료를 덮어씁니다.':''}`))return;
-  const doc={date:lgDate,month:lgDate.slice(0,7),loadedAt:Date.now(),warehouse:'Picking Zone',source:'file',file:f.name,by:lsGet('myName')||'',items:r.items};
-  try{await db.doc(P('stockcheck')+'/'+lgDate).set(doc);lgCheck=doc;renderLedger();toast(`재고장에 ${r.items.length}개 상품을 넣었습니다.`)}catch(er){toast(errMsg(er))}
+  let items=r.items;const size=o=>JSON.stringify(o).length;
+  const mk=its=>({date:lgDate,month:lgDate.slice(0,7),loadedAt:Date.now(),warehouse:'Picking Zone',source:'file',file:f.name,by:lsGet('myName')||'',items:its});
+  // 시트 한 칸 한도(50,000자) 안으로: 움직임도 재고도 없는 상품부터 뺌
+  let doc=mk(items),trimmed=0;
+  if(size(doc)>45000){const keep=items.filter(it=>lgTarget(it)||n0(it.end)!==0);trimmed=items.length-keep.length;items=keep;doc=mk(items)}
+  if(size(doc)>45000){items=items.map(it=>lgTarget(it)?it:{code:it.code,name:it.name,end:it.end});doc=mk(items)}
+  if(size(doc)>48000){toast(`상품이 너무 많아(${items.length}개) 저장할 수 없습니다. 창고를 Picking Zone으로 좁혀 다시 내보내 주세요.`);return}
+  const path=P('stockcheck')+'/'+lgDate;
+  try{await db.doc(path).set(doc);lgCheck=doc;renderLedger();toast(`재고장에 ${items.length}개 상품을 넣었습니다.${trimmed?` (재고·움직임 없는 ${trimmed}개 제외)`:''}`)}
+  catch(er){try{await db.doc(path).delete()}catch{};lgCheck=null;renderLedger();toast('재고장 자료를 구글 시트에 저장하지 못했습니다'+(er&&er.message?` (${er.message})`:'')+'. 잠시 후 다시 올려 주세요.')}
 });
 /* 품목·설정 탭의 「재고장 제외 상품」 목록 */
 function renderLgExclude(){
