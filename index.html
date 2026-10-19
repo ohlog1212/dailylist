@@ -101,6 +101,18 @@ select.in{padding-right:4px}
 /* 가공작업 일시정지 */
 .pausebox{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
 .pausebtn{height:40px;width:100%}
+/* 완료(종료 시각 입력)된 차수·가공작업은 한 줄로 접힘. 누르면 펼침 */
+.ssum,.tsum{display:none;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;font-size:13.5px;color:var(--muted);min-height:36px;padding:0 4px}
+.ssum b,.tsum b{color:var(--ink);font-weight:600}
+.ssum .mono,.tsum .mono{font-size:12.5px}
+.ssum .ok,.tsum .ok{color:var(--ok);font-weight:700}
+.ssum .more,.tsum .more{margin-left:auto;font-size:12px;color:var(--accent);font-weight:600;white-space:nowrap}
+.ship.collapsed{grid-template-columns:1fr;padding:4px 10px;background:var(--surface-2)}
+.ship.collapsed .ship-l,.ship.collapsed .ship-r{display:none} .ship.collapsed .ssum{display:flex}
+.task.collapsed{border-left-width:5px;background:var(--surface-2)}
+.task.collapsed .task-head,.task.collapsed .task-grid,.task.collapsed .task-foot{display:none} .task.collapsed .tsum{display:flex;padding:4px 10px}
+.task .tsum .chip{height:24px;padding:0 8px;font-size:11.5px;cursor:pointer;background:var(--tc);border-color:var(--tc);color:var(--surface)}
+.foldbtn{height:30px;padding:0 10px;font-size:12px}
 .sl-pause{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .sl-pause .pausebtn{width:auto;height:34px;padding:0 12px}
 .ship.paused{border-style:dashed;border-color:var(--warn)}
@@ -552,6 +564,8 @@ let curDate=todayStr(), curMonth=curDate.slice(0,7), viewMonth=curMonth, exMonth
 let days={}, tasks={}, dayLocal=null;
 let unsubDays=null, unsubTasks=null, unsubMaster=null, lastSaved=null;
 const savers={};
+/* 완료된 차수·가공작업 중 펼쳐 둔 것 (이 기기 화면에서만) */
+const openShips=new Set(),openTasks=new Set();
 
 /* ---------- 업체 ---------- 저장소는 업체마다 따로 (아마레는 기존 이름 그대로, 엘알은 lr_ 접두어) */
 const COMPANIES=[
@@ -682,6 +696,11 @@ function renderDay(){
     if(pb){pb.textContent=open?'▶ 재개':'⏸ 일시정지';pb.classList.toggle('on',!!open);pb.disabled=!s.start||(!!s.end&&!open)}
     r.classList.toggle('paused',!!open);
     const st=r.querySelector('[data-stime]');if(st)st.innerHTML=open?`<span class="pill warn">⏸ ${esc(open.s)}부터 일시정지 중</span>`:wm!==''?`작업 <b>${wm}</b>분${pm?` · 정지 ${pm}분 제외`:''}`:(pm?`정지 ${pm}분`:'');
+    // 종료된 차수는 한 줄로 접기 (수정 중이거나 펼쳐 둔 것은 그대로)
+    const key=curDate+'#'+r.dataset.i,finished=!!(s.end&&s.start)&&!open;
+    const fold=finished&&!openShips.has(key)&&!r.contains(document.activeElement);
+    r.classList.toggle('collapsed',fold);const fb=r.querySelector('[data-act="shipFold"]');if(fb)fb.hidden=!finished||fold;
+    const sm=r.querySelector('.ssum');if(sm)sm.innerHTML=`<span class="ok">✓</span><b>${esc(s.round||'차수')}</b><span><b>${n0(s.count)}</b>건${n0(s.add)||n0(s.cancel)?` <span class="mono">(+${n0(s.add)} −${n0(s.cancel)})</span>`:''}</span><span class="mono">${esc(s.start)}~${esc(s.end)}</span>${wm!==''?`<span>작업 <b>${wm}</b>분</span>`:''}<span>박스 <b>${shipBoxSum(s)}</b></span><span class="more">펼치기 ▾</span>`;
   });
   renderBoxLocks();renderDayTotals();renderStatus();renderConfirm();
 }
@@ -690,13 +709,14 @@ function shipHTML(i){
   const nIn=(f,l)=>`<label class="f">${l}<input class="in num" type="number" inputmode="numeric" data-s="ship" data-f="${f}" id="s${i}-${f}"></label>`;
   const bIn=([k,l])=>`<label class="f">${esc(l.replace(/\s*박스$/,''))}<input class="in num" type="number" inputmode="numeric" data-s="shipbox" data-f="${k}" id="s${i}-b-${k}"></label>`;
   return `<div class="ship" data-i="${i}">
+    <div class="ssum" data-act="shipOpen" role="button" title="누르면 펼쳐서 수정"></div>
     <div class="ship-l">
       <div class="sl-top"><label class="f">차수<input class="in" list="roundList" data-s="ship" data-f="round" id="s${i}-round"></label>${nIn('count','건수')}${tIn('start','시작')}${tIn('end','종료')}</div>
       <div class="sl-ext">${nIn('add','추가')}${nIn('cancel','송장취소')}${nIn('exch','맞교환')}</div>
       <div class="sl-pause"><button class="btn small pausebtn" data-act="shipPause" type="button" title="휴식·다른 작업으로 피킹을 멈출 때">⏸ 일시정지</button><span class="note" data-stime></span></div>
     </div>
     <div class="ship-r">
-      <div class="sr-h">박스 수량 <b data-sbt>0</b><button class="xbtn" data-act="delShip" type="button" aria-label="차수 삭제">×</button></div>
+      <div class="sr-h">박스 수량 <b data-sbt>0</b><button class="btn small foldbtn" data-act="shipFold" type="button" hidden title="완료된 차수를 한 줄로 접기">접기 ▴</button><button class="xbtn" data-act="delShip" type="button" aria-label="차수 삭제">×</button></div>
       <div class="sr-grid">${(co?co.boxes:[]).map(bIn).join('')}</div>
     </div>
   </div>`;
@@ -757,7 +777,8 @@ $('#daySection').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||b.closest('#taskList'))return;
   if(b.dataset.act==='shipNow'){const r=b.closest('.ship');const i=+r.dataset.i;const s=dayLocal.ships[i];const n=nowHM();s[b.dataset.f]=n;
     if(b.dataset.f==='end')s.pauses=(s.pauses||[]).map(p=>p.s&&!p.e?{...p,e:n}:p); // 일시정지 중 종료 → 정지도 그 시각에 끝
-    setVal(r.querySelector(`input[data-f="${b.dataset.f}"]`),s[b.dataset.f]);saveDay();renderDay()}
+    setVal(r.querySelector(`input[data-f="${b.dataset.f}"]`),s[b.dataset.f]);saveDay();if(b.dataset.f==='end')document.activeElement?.blur();renderDay()}
+  if(b.dataset.act==='shipFold'){openShips.delete(curDate+'#'+b.closest('.ship').dataset.i);document.activeElement?.blur();renderDay();return}
   if(b.dataset.act==='shipPause'){const s=dayLocal.ships[+b.closest('.ship').dataset.i];
     if(!s.start){toast('시작 시각을 먼저 넣어 주세요.');return}
     const ps=(s.pauses||[]).map(p=>({...p})),open=ps.find(p=>p.s&&!p.e),n=nowHM();
@@ -772,6 +793,9 @@ $('#daySection').addEventListener('click',e=>{
   if(b.id==='confirmBtn'){dayLocal.confirmed={by:lsGet('myName'),at:Date.now()};saveDay();renderConfirm()}
   if(b.id==='unconfirmBtn'){dayLocal.confirmed=null;saveDay();renderConfirm()}
 });
+/* 접힌 차수 누르면 펼치기 · 입력칸에서 나가면 완료된 차수는 다시 접기 */
+$('#shipList').addEventListener('click',e=>{const sm=e.target.closest('.ssum');if(!sm)return;openShips.add(curDate+'#'+sm.closest('.ship').dataset.i);renderDay()});
+$('#shipList').addEventListener('focusout',()=>setTimeout(()=>{if(!$('#shipList').contains(document.activeElement))renderDay()},80));
 $('#addShip').addEventListener('click',()=>{
   const n=dayLocal.ships.length;dayLocal.ships.push({round:n<3?`${n+1}차`:'',count:'',start:'',end:'',add:'',cancel:'',exch:''});
   saveDay();document.activeElement?.blur();renderDay();$(`#s${n}-count`)?.focus();
@@ -811,7 +835,8 @@ function supCoOptions(sel){
 function makeSupEl(id){
   const el=document.createElement('div');el.className='task';el.dataset.id=id;el.dataset.type='지원';
   const tIn=(f,l)=>`<label class="f c2 c1h">${l}<span class="timein"><input class="in mono" type="time" data-f="${f}" id="${id}-${f}"><button class="nowbtn" data-act="now" data-f="${f}" type="button">지금</button></span></label>`;
-  el.innerHTML=`<div class="task-head"><span class="suptag">타업체 지원</span><label class="f" style="flex:1;min-width:160px;max-width:320px"><select class="in" data-f="supCo" id="${id}-supCo" style="height:36px" aria-label="지원 업체"></select></label><span class="sp"></span><button class="xbtn" data-act="del" type="button" aria-label="지원 삭제">×</button></div>
+  el.innerHTML=`<div class="tsum" data-act="taskOpen" role="button" title="누르면 펼쳐서 수정"></div>
+  <div class="task-head"><span class="suptag">타업체 지원</span><label class="f" style="flex:1;min-width:160px;max-width:320px"><select class="in" data-f="supCo" id="${id}-supCo" style="height:36px" aria-label="지원 업체"></select></label><span class="sp"></span><button class="btn small foldbtn" data-act="fold" type="button" hidden title="완료된 지원을 한 줄로 접기">접기 ▴</button><button class="xbtn" data-act="del" type="button" aria-label="지원 삭제">×</button></div>
   <div class="task-grid">
     <label class="f c2 c1h">인원<input class="in num" type="number" inputmode="numeric" data-f="people" id="${id}-people" placeholder="명"></label>
     <label class="f c4">내용<input class="in" data-f="name" id="${id}-name" placeholder="예: 피킹 지원, 상차 지원"></label>
@@ -834,6 +859,14 @@ function fillSup(el,t){
     if(n0(t.people)>0)f.push(`${n0(t.people)}명 × ${fmtMin(supMins(t))} = <b>${fmtMin(supMins(t)*n0(t.people))}</b>`)}
   if(t.exported)f.push('<span class="pill ok">엑셀 반영됨</span>');
   el.querySelector('[data-foot]').innerHTML=f.join(' · ');el.querySelector('[data-foot]').hidden=!f.length;
+  foldTask(el,t,`<span class="chip">지원</span><b>${esc(t.supCo||'업체 미지정')}</b><span>${esc(t.name||'')}</span>${n0(t.people)?`<span><b>${n0(t.people)}</b>명</span>`:''}<span class="mono">${esc(t.start)}~${esc(t.end)}</span>${supMins(t)!==''?`<span><b>${supMins(t)}</b>분</span>`:''}`);
+}
+/* 종료된 작업 접기: 수정 중이거나 펼쳐 둔 것은 그대로 */
+function foldTask(el,t,summary){
+  const id=el.dataset.id,open=(t.pauses||[]).some(p=>p.s&&!p.e),finished=!!(t.start&&t.end)&&!open;
+  const fold=finished&&!openTasks.has(id)&&!el.contains(document.activeElement);
+  el.classList.toggle('collapsed',fold);const fb=el.querySelector('[data-act="fold"]');if(fb)fb.hidden=!finished||fold;
+  const sm=el.querySelector('.tsum');if(sm)sm.innerHTML=`<span class="ok">✓</span>`+summary+`<span class="more">펼치기 ▾</span>`;
 }
 function newId(){try{if(db)return db.collection(P('tasks')).doc().id}catch{}return 't'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 function addTask(type){
@@ -866,7 +899,8 @@ function itemOptions(type,code){
 function makeTaskEl(id){
   const el=document.createElement('div');el.className='task';el.dataset.id=id;
   const tIn=(f,l)=>`<label class="f c2 c1h">${l}<span class="timein"><input class="in mono" type="time" data-f="${f}" id="${id}-${f}"><button class="nowbtn" data-act="now" data-f="${f}" type="button">지금</button></span></label>`;
-  el.innerHTML=`<div class="task-head"><div class="chips">${master.types.map(t=>`<button class="chip" data-act="type" data-v="${esc(t)}" type="button">${esc(tl(t))}</button>`).join('')}</div><span class="sp"></span><button class="xbtn" data-act="del" type="button" aria-label="작업 삭제">×</button></div>
+  el.innerHTML=`<div class="tsum" data-act="taskOpen" role="button" title="누르면 펼쳐서 수정"></div>
+  <div class="task-head"><div class="chips">${master.types.map(t=>`<button class="chip" data-act="type" data-v="${esc(t)}" type="button">${esc(tl(t))}</button>`).join('')}</div><span class="sp"></span><button class="btn small foldbtn" data-act="fold" type="button" hidden title="완료된 작업을 한 줄로 접기">접기 ▴</button><button class="xbtn" data-act="del" type="button" aria-label="작업 삭제">×</button></div>
   <div class="task-grid">
     <label class="f c4">상품<select class="in" data-f="itemSel" id="${id}-item"></select></label>
     <label class="f c2">상품코드<input class="in mono" data-f="code" id="${id}-code"></label>
@@ -906,6 +940,7 @@ function fillTask(el,t){
   if(t.exported)f.push('<span class="pill ok">엑셀 반영됨</span>');
   el.querySelector('[data-foot]').innerHTML=f.join(' · ');
   el.querySelector('[data-foot]').hidden=!f.length;
+  foldTask(el,t,`<span class="chip">${esc(tl(t.type))}</span><b>${esc(t.name||it?.name||t.code||'상품 미지정')}</b>${t.qty!==''&&t.qty!=null?`<span><b>${fmtN(n0(t.qty))}</b>개</span>`:''}<span class="mono">${esc(t.start)}~${esc(t.end)}</span>${t.minutes!==''&&t.minutes!=null?`<span><b>${n0(t.minutes)}</b>분</span>`:''}${t.exported?'<span class="pill ok" style="height:22px">엑셀</span>':''}`);
 }
 function renderTasks(){
   const list=$('#taskList');const items=tasksForDate(curDate);
@@ -942,14 +977,18 @@ $('#taskList').addEventListener('change',e=>{
   commitTask(id,t,0);fillTask(el,t);
   if(i.value==='__custom')el.querySelector('[data-f="name"]').focus();
 });
+$('#taskList').addEventListener('focusout',()=>setTimeout(()=>{if(!$('#taskList').contains(document.activeElement))renderTasks()},80));
 $('#taskList').addEventListener('click',e=>{
+  const sm=e.target.closest('.tsum');if(sm){const el0=sm.closest('.task');openTasks.add(el0.dataset.id);fillTask(el0,tasks[el0.dataset.id]);return}
   const b=e.target.closest('button[data-act]');if(!b)return;
   const el=b.closest('.task'),id=el.dataset.id;const t={...tasks[id]};
+  if(b.dataset.act==='fold'){openTasks.delete(id);document.activeElement?.blur();fillTask(el,t);return}
   switch(b.dataset.act){
     case 'type':t.type=b.dataset.v;break;
     case 'now':{const n=nowHM();t[b.dataset.f]=n;
       if(b.dataset.f==='end'){t.pauses=(t.pauses||[]).map(p=>p.s&&!p.e?{...p,e:n}:p)} // 일시정지 중 종료 → 정지도 그 시각에 끝
-      if(isSup(t))t.minutes=supMins(t);else if(!t.minutesManual)t.minutes=workMins(t);break}
+      if(isSup(t))t.minutes=supMins(t);else if(!t.minutesManual)t.minutes=workMins(t);
+      if(b.dataset.f==='end')document.activeElement?.blur();break} // 종료를 누르면 접히도록 포커스를 뺌
     case 'lunch':t.lunch=!t.lunch;t.minutes=supMins(t);break;
     case 'autoMin':t.minutesManual=false;t.minutes=workMins(t);break;
     case 'pause':{
