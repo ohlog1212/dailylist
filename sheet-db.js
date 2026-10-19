@@ -2,12 +2,16 @@
  * 페이지가 쓰는 저장 기능(doc/collection/onSnapshot/set/update/delete)을
  * 구글 Apps Script 웹 앱으로 대신 처리합니다.
  * - 처음 열 때 현장 PIN을 한 번 입력하면 그 기기에 기억됩니다.
- * - 입력은 0.3초 모아서 한 번에 보내고, 실패하면 3번까지 다시 보냅니다.
+ * - 입력은 0.3초 모아서 한 번에 보내고, 실패하면 될 때까지 다시 보냅니다(3초→6초→…최대 30초 간격).
+ * - 아직 못 보낸 입력은 이 기기(localStorage)에도 적어 두어, 핸드폰이 화면을 내려 페이지가 다시 열려도 사라지지 않고 이어서 보냅니다.
+ * - 마지막으로 받은 자료도 이 기기에 저장해 두어, 인터넷이 끊긴 채 열려도 자료가 보입니다.
  * - 다른 기기의 입력은 12초마다(화면을 다시 켤 때는 바로) 가져옵니다.
  */
 (function(){
   const CFG = window.AMARE_CONFIG || {};
   const PIN_KEY = 'amare_pin';
+  const OUTBOX_KEY = 'amare_outbox';   // 아직 서버에 못 보낸 쓰기
+  const CACHE_KEY = 'amare_cache';     // 마지막으로 받은 자료
   const POLL_MS = 12000;
   const lsGet = k => { try { return localStorage.getItem(k) } catch { return null } };
   const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v) } catch {} };
@@ -19,13 +23,13 @@
   /* 구글 쪽 전달(리다이렉트)이 가끔 실제 응답 대신 상태 페이지({ok,app})를 돌려줄 때가 있다.
    * 저장은 now, 읽기는 rows 가 있어야 진짜 응답으로 보고, 아니면 3번까지 다시 보낸다 (같은 내용 재전송이라 안전). */
   const looksDone = (action, j) => action === 'batch' ? typeof j.now === 'number' : Array.isArray(j.rows);
-  async function call(body) {
+  async function call(body, keepalive) {
     let last = { code: 'network', message: '응답을 받지 못했습니다.' };
     for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt) await new Promise(r => setTimeout(r, 600 * attempt));
       let r;
       try {
-        r = await fetch(CFG.apiUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pin }), redirect: 'follow' });
+        r = await fetch(CFG.apiUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ ...body, pin }), redirect: 'follow', keepalive: !!keepalive });
       } catch (e) { last = { code: 'network', message: '인터넷 연결을 확인해 주세요.' }; continue }
       if (!r.ok) { last = { code: 'network', message: 'HTTP ' + r.status }; continue }
       let j; try { j = await r.json() } catch { last = { code: 'network', message: '응답을 읽지 못했습니다.' }; continue }
@@ -100,13 +104,21 @@
     });
   }
 
-  /* ---------- 쓰기 대기열 ---------- */
-  let queue = [], flushT = null, inflight = false;
+  /* ---------- 쓰기 대기열 (localStorage 에도 적어 두는 보관함) ---------- */
+  let queue = [], flushT = null, inflight = false, failStreak = 0, inflightItems = null;
+  /* 보관함: coll/id 별로 마지막 쓰기만 남긴다 (같은 문서는 최신 것만 보내면 됨) */
+  function saveOutbox() {
+    const m = {};
+    [...(inflightItems || []), ...queue].forEach(i => { m[i.op.coll + '/' + i.op.id] = i.op });
+    lsSet(OUTBOX_KEY, Object.keys(m).length ? JSON.stringify(Object.values(m)) : null);
+  }
+  function loadOutbox() { try { const a = JSON.parse(lsGet(OUTBOX_KEY) || '[]'); return Array.isArray(a) ? a : [] } catch { return [] } }
   function enqueue(op) {
     return new Promise((res, rej) => {
       const k = op.coll + '/' + op.id;
       pending.set(k, (pending.get(k) || 0) + 1);
       queue.push({ op, res, rej, tries: 0 });
+      saveOutbox();
       clearTimeout(flushT); flushT = setTimeout(flush, 300);
     });
   }
@@ -114,25 +126,47 @@
     const k = item.op.coll + '/' + item.op.id, n = (pending.get(k) || 1) - 1;
     n ? pending.set(k, n) : pending.delete(k);
   }
-  async function flush() {
+  async function flush(keepalive) {
     if (inflight) { clearTimeout(flushT); flushT = setTimeout(flush, 300); return }
     const items = queue; queue = [];
     if (!items.length) return;
-    inflight = true;
+    inflight = true; inflightItems = items; flushT = null;
     try {
-      const j = await call({ action: 'batch', ops: items.map(i => i.op) });
+      const j = await call({ action: 'batch', ops: items.map(i => i.op) }, keepalive);
       items.forEach(i => { lastWrite.set(i.op.coll + '/' + i.op.id, j.now); done(i); i.res() });
+      failStreak = 0;
     } catch (e) {
-      if (e.code === 'pin') { items.forEach(i => { done(i); i.rej({ code: 'invalid_argument', message: 'PIN' }) }); pinFail() }
-      else {
-        const retry = items.filter(i => ++i.tries < 3), give = items.filter(i => i.tries >= 3);
-        give.forEach(i => { done(i); i.rej({ code: 'unavailable', message: e.message }) });
-        if (retry.length) { queue = retry.concat(queue); clearTimeout(flushT); flushT = setTimeout(flush, 3000) }
-      }
+      if (e.code === 'pin') { items.forEach(i => { done(i); i.rej({ code: 'invalid_argument', message: 'PIN' }) }); inflightItems = null; saveOutbox(); pinFail(); return }
+      // 포기하지 않고 간격을 늘려 가며 다시 보낸다 (3초 → 6초 → … 최대 30초). 보관함에 남아 있어 페이지가 닫혀도 다음에 이어서 보냄
+      items.forEach(i => i.tries++);
+      queue = items.concat(queue); failStreak++;
+      clearTimeout(flushT); flushT = setTimeout(flush, Math.min(30000, 3000 * failStreak));
+      fatalSoft(`저장 대기 ${queue.length}건 — 인터넷 연결을 확인하세요. 연결되면 자동으로 보냅니다.`);
     } finally {
-      inflight = false;
+      inflight = false; inflightItems = null; saveOutbox();
+      if (!queue.length) fatalSoft('');
       if (queue.length && !flushT) flushT = setTimeout(flush, 300);
     }
+  }
+  /* 화면을 내리거나 닫을 때: 모아 둔 입력을 바로 보낸다 (keepalive 로 페이지가 닫혀도 전송 유지) */
+  window.addEventListener('pagehide', () => { clearTimeout(flushT); flush(true) });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { clearTimeout(flushT); flush(true) } });
+  window.addEventListener('online', () => { failStreak = 0; clearTimeout(flushT); flushT = setTimeout(flush, 300) });
+  let softT = null;
+  function fatalSoft(msg) {
+    const b = document.getElementById('banner'); if (!b) return;
+    if (!msg) { if (b.dataset.soft) { b.hidden = true; b.textContent = ''; delete b.dataset.soft } return }
+    if (!b.hidden && !b.dataset.soft) return;  // 다른 중요한 안내가 떠 있으면 덮지 않음
+    b.hidden = false; b.textContent = msg; b.dataset.soft = '1';
+  }
+  /* 마지막으로 받은 자료를 이 기기에 저장 (너무 크면 저장하지 않음) */
+  function saveCache(now) {
+    try {
+      const rows = [];
+      Object.keys(cache).forEach(c => mapOf(c).forEach((d, id) => rows.push({ coll: c, id, data: d })));
+      const s = JSON.stringify({ now, rows });
+      if (s.length < 3000000) lsSet(CACHE_KEY, s);
+    } catch {}
   }
 
   /* ---------- 다른 기기 변경 가져오기 ---------- */
@@ -152,7 +186,7 @@
   async function poll() {
     if (polling || document.hidden) return;
     polling = true;
-    try { const j = await call({ action: 'changes', since: Math.max(0, since - 5000) }); apply(j.rows); since = j.now }
+    try { const j = await call({ action: 'changes', since: Math.max(0, since - 5000) }); apply(j.rows); since = j.now; if (j.rows.length) saveCache(since) }
     catch (e) { if (e.code === 'pin') pinFail() }
     finally { polling = false }
   }
@@ -217,6 +251,11 @@
       }
       pin = lsGet(PIN_KEY);
       let msg = '';
+      /* 못 보낸 쓰기(보관함)는 서버 자료보다 우선 — 화면에 먼저 반영하고 다시 보낸다 */
+      const replayOutbox = () => {
+        const ops = loadOutbox(); if (!ops.length) return;
+        ops.forEach(op => { const m = mapOf(op.coll); if (op.op === 'delete') m.delete(op.id); else m.set(op.id, clone(op.data)); notify(op.coll); enqueue(op).catch(() => {}) });
+      };
       for (;;) {
         if (!pin) pin = await gate(msg);
         try {
@@ -224,10 +263,22 @@
           lsSet(PIN_KEY, pin);
           j.rows.forEach(r => { if (r.data != null) mapOf(r.coll).set(r.id, r.data) });
           since = j.now;
+          replayOutbox();
+          saveCache(since);
           startPolling();
           return { db, dl };
         } catch (e) {
           if (e.code === 'pin') { lsSet(PIN_KEY, null); pin = null; msg = 'PIN 번호가 맞지 않습니다.'; continue }
+          /* 연결 실패: 마지막으로 받아 둔 자료로 열고, 입력은 보관함에 모아 두었다가 연결되면 보낸다 */
+          let c = null; try { c = JSON.parse(lsGet(CACHE_KEY) || 'null') } catch {}
+          if (c && Array.isArray(c.rows) && pin) {
+            c.rows.forEach(r => { if (r.data != null) mapOf(r.coll).set(r.id, r.data) });
+            since = c.now || 0;
+            replayOutbox();
+            startPolling();
+            fatal('인터넷에 연결되지 않아 마지막으로 받아 둔 자료로 열었습니다. 입력은 이 기기에 모아 두었다가 연결되면 자동으로 보냅니다.');
+            return { db, dl };
+          }
           fatal('구글 시트에 연결하지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요. (' + (e.message || '') + ')');
           return null;
         }
