@@ -1,5 +1,5 @@
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
-<title>아마레·엘알 작업일지</title>
+<title>아마레·엘알·힐리 작업일지</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
 <style>
@@ -189,6 +189,10 @@ td .in{height:34px;font-size:13.5px;padding:0 8px}
 :root[data-co="lr"]{--accent:#23705c;--accent-soft:#dff0e9;--t-set:#23705c}
 @media (prefers-color-scheme: dark){ :root[data-co="lr"]:not([data-theme="light"]){--accent:#6cc3a6;--accent-soft:#16342b;--on-accent:#0b1f19;--t-set:#6cc3a6}}
 :root[data-theme="dark"][data-co="lr"]{--accent:#6cc3a6;--accent-soft:#16342b;--on-accent:#0b1f19;--t-set:#6cc3a6}
+/* 힐리: 회색 + 파랑 */
+:root[data-co="healy"]{--accent:#2563eb;--accent-soft:#e3ebfb;--t-set:#4b5563}
+@media (prefers-color-scheme: dark){ :root[data-co="healy"]:not([data-theme="light"]){--accent:#7aa7f5;--accent-soft:#1c2840;--on-accent:#0b1424;--t-set:#aab4c0}}
+:root[data-theme="dark"][data-co="healy"]{--accent:#7aa7f5;--accent-soft:#1c2840;--on-accent:#0b1424;--t-set:#aab4c0}
 .coswitch{display:flex;gap:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:3px}
 .coswitch button{height:32px;padding:0 14px;border:0;border-radius:7px;background:none;font-weight:700;font-size:13.5px;color:var(--muted);cursor:pointer}
 .coswitch button.on{background:var(--accent);color:var(--on-accent)}
@@ -282,7 +286,7 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
 .cocard .nm{font-size:22px;font-weight:700;color:var(--ink)}
 .cocard .ds{font-size:13px;color:var(--muted)}
 .cocard .last{font-size:12px;font-weight:600;color:var(--cc)}
-.cocard[data-co="amare"]{--cc:#1d5a86}.cocard[data-co="lr"]{--cc:#23705c}
+.cocard[data-co="amare"]{--cc:#1d5a86}.cocard[data-co="lr"]{--cc:#23705c}.cocard[data-co="healy"]{--cc:#2563eb}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .cocard[data-co="amare"]{--cc:#6aa8d6} :root:not([data-theme="light"]) .cocard[data-co="lr"]{--cc:#6cc3a6}}
 :root[data-theme="dark"] .cocard[data-co="amare"]{--cc:#6aa8d6}:root[data-theme="dark"] .cocard[data-co="lr"]{--cc:#6cc3a6}
 </style>
@@ -446,7 +450,7 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
         <span class="right"><label class="row" style="font-size:12.5px;font-weight:600;color:var(--muted)"><input type="checkbox" id="lgAll"> 전체 상품 보기</label>
           <label class="btn small" for="lgFile" title="WMS 기간별 수불현황을 엑셀로 내보낸 파일을 이 날짜 재고장에 넣습니다">WMS 엑셀 올리기</label><input type="file" id="lgFile" accept=".xlsx,.xls,.csv" hidden></span></h2>
       <div class="tablewrap"><table id="lgTable"></table></div>
-      <div class="body"><p class="note" style="margin:0" id="lgNote">WMS 재고는 사무실 PC의 <b>아마레 도우미 → 재고장 → [기간별 수불현황 로드]</b>(아마레)로 들어오거나, WMS에서 내보낸 기간별 수불현황 엑셀을 <b>[WMS 엑셀 올리기]</b>로 넣으면 됩니다. 실수량이 WMS 재고수량과 다르면 칸이 <b style="color:var(--bad)">빨간색</b>으로 표시됩니다.</p></div>
+      <div class="body"><p class="note" style="margin:0" id="lgNote">WMS 재고는 사무실 PC의 <b>업체컨트롤러 → 재고장 → [기간별 수불현황 로드]</b>(아마레)로 들어오거나, WMS에서 내보낸 기간별 수불현황 엑셀을 <b>[WMS 엑셀 올리기]</b>로 넣으면 됩니다. 실수량이 WMS 재고수량과 다르면 칸이 <b style="color:var(--bad)">빨간색</b>으로 표시됩니다.</p></div>
     </div>
   </section>
 
@@ -563,6 +567,11 @@ const COMPANIES=[
    mats:[['tape','테이프']],
    stock:{task:'라벨',kind:'단품',label:'스티커',taskLabel:'스티커 작업',unit:'개',parts:['앞(안쪽)','뒤']},
    serial:false,helper:false,ledger:true,desc:'스티커 · 포장 · 세트 · 기타'},
+  {id:'healy',name:'힐리월드코리아',short:'힐리',mark:'HEALY',prefix:'hl_',
+   types:['라벨','포장','세트','기타'],
+   boxes:[['box1','1호 박스'],['box2','2호 박스'],['box3','3호 박스'],['box4','4호 박스'],['boxEtc','기타 박스']],
+   mats:[['tape','테이프']],
+   stock:null,serial:false,helper:false,ledger:false,desc:'스티커 · 포장 · 세트 · 기타'},
 ];
 let co=null;
 const P=name=>(co?co.prefix:'')+name;                 // 컬렉션 이름
@@ -1504,7 +1513,7 @@ function renderLedger(){
   $('#lgDate').value=lgDate;$('#lgDow').textContent=dowOf(lgDate)+'요일';
   const st=$('#lgStatus'),tb=$('#lgTable');
   if(!lgCheck){st.className='pill';st.textContent='WMS 자료 없음';$('#lgSum').innerHTML='';
-    tb.innerHTML=`<tbody><tr><td class="note" style="white-space:normal;padding:18px">${esc(lgDate.slice(5).replace('-','/'))} 재고 자료가 아직 없습니다. ${co.helper?'사무실 <b>아마레 도우미 → 재고장 → [기간별 수불현황 로드]</b>를 누르거나, ':''}WMS에서 이날 <b>기간별 수불현황</b>을 엑셀로 내보내 위의 <b>[WMS 엑셀 올리기]</b>로 넣어 주세요.</td></tr></tbody>`;return}
+    tb.innerHTML=`<tbody><tr><td class="note" style="white-space:normal;padding:18px">${esc(lgDate.slice(5).replace('-','/'))} 재고 자료가 아직 없습니다. ${co.helper?'사무실 <b>업체컨트롤러 → 재고장 → [기간별 수불현황 로드]</b>를 누르거나, ':''}WMS에서 이날 <b>기간별 수불현황</b>을 엑셀로 내보내 위의 <b>[WMS 엑셀 올리기]</b>로 넣어 주세요.</td></tr></tbody>`;return}
   const rows=lgRows(),counts=(lgCount&&lgCount.counts)||{};
   const {done,bad}=lgPaintStatus(rows,counts);
   const lt=lgCheck.loadedAt?new Date(lgCheck.loadedAt):null;
