@@ -1800,7 +1800,11 @@ setSync();
   [db,dl]=await Promise.all([cl.use('db').catch(()=>null),cl.use('downloads').catch(()=>null)]);
   }
   if(!db){$('#banner').hidden=false;$('#banner').textContent='저장 기능에 연결하지 못했습니다. 입력 내용이 공유되지 않으니 새로고침해 주세요.';setSync();return}
-  setSync();startData();if(mode==='parcel'){pKey='';pSub()}
+  setSync();
+  // 핸드폰이 화면을 내렸다가 다시 불러오면 첫 화면(업체 선택)으로 돌아오던 문제: 마지막에 쓰던 업체·탭으로 바로 복귀
+  const lastCo=lsGet('co');
+  if(mode==='home'&&lastCo&&COMPANIES.some(c=>c.id===lastCo))selectCompany(lastCo);else startData();
+  if(mode==='parcel'){pKey='';pSub()}
 })();
 })();
 </script>
