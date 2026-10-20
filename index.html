@@ -470,7 +470,7 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
   <section id="tab-stock" hidden>
     <div id="stockAlertCard"></div>
     <div class="sheet">
-      <h2><span id="stockTitle">부자재 재고</span> <span class="sub">잔여 = 재고수량 + 입고 − 사용</span>
+      <h2><span id="stockTitle">부자재 재고</span> <span class="sub">입고·사용은 오늘 것만 표시 · 잔여는 전체 누적</span>
         <span class="right">
           <button class="btn small" id="stockXlsx" type="button">엑셀 받기</button>
           <label class="btn small" for="stockFile">엑셀 올리기</label><input type="file" id="stockFile" accept=".xlsx,.xls,.csv" hidden>
@@ -1345,12 +1345,13 @@ function renderStock(){
   if(!rows.length){tb.innerHTML=`<tbody><tr><td class="note" style="white-space:normal;padding:18px">등록된 ${esc(sc.label)}가 없습니다. <b>+ ${esc(sc.label)} 등록</b> 또는 <b>엑셀 올리기</b>로 상품과 현재 재고수량을 넣어 주세요.</td></tr></tbody>`;return}
   rows.sort((a,b)=>stockName(a.m).localeCompare(stockName(b.m))||partOrder(a.m.part)-partOrder(b.m.part));
   let prev='';
-  tb.innerHTML=`<thead><tr><th>상품</th>${parts?'<th>구분</th>':''}<th class="n">재고수량</th><th class="n">입고</th><th class="n">사용</th><th class="n">잔여</th><th></th></tr></thead><tbody>`+
+  const today=todayStr();
+  tb.innerHTML=`<thead><tr><th>상품</th>${parts?'<th>구분</th>':''}<th class="n">재고수량</th><th class="n">오늘 입고</th><th class="n">오늘 사용</th><th class="n">잔여</th><th></th></tr></thead><tbody>`+
     rows.map(({m,c})=>{
       const nm=stockName(m),same=parts&&nm===prev;prev=nm;
       const od=m.orderedAt?esc(m.orderedAt.slice(5).replace('-','/')):'';
       return `<tr><td>${same?'<span class="note">〃</span>':`<b>${esc(nm)}</b><div class="note mono">${esc(m.code)}</div>`}</td>${parts?`<td>${esc(m.part||'')}</td>`:''}
-        <td class="n">${fmtN(n0(m.opening))}</td><td class="n">${c.rcv?'+'+fmtN(c.rcv):''}</td><td class="n">${c.used?'−'+fmtN(c.used):''}</td>
+        <td class="n" title="재고수량을 맞춘 뒤 누적 입고 +${fmtN(c.rcv)} · 누적 사용 −${fmtN(c.used)}">${fmtN(n0(m.opening))}</td><td class="n">${(()=>{const v=(m.receipts||[]).filter(r=>r.date===today).reduce((a,r)=>a+n0(r.qty),0);return v?'+'+fmtN(v):''})()}</td><td class="n">${(()=>{const v=c.uses.filter(u=>u.date===today).reduce((a,u)=>a+u.qty,0);return v?'−'+fmtN(v):''})()}</td>
         <td class="n"><span class="remain ${c.remain<=0?'bad':''}">${fmtN(c.remain)}</span> ${unit(m)}</td>
         <td><div class="row" style="flex-wrap:nowrap"><button class="btn small${od?' primary':''}" data-sact="order" data-id="${m.id}" type="button" title="${od?'발주 요청됨 — 누르면 취소':'사무실에 발주(출력) 요청'}">${od?'발주됨 '+od:'발주'}</button>
           <button class="btn small" data-sact="edit" data-id="${m.id}" type="button">수정</button><button class="xbtn" data-sact="del" data-id="${m.id}" type="button" aria-label="삭제" style="height:32px">×</button></div></td></tr>`}).join('')+'</tbody>';
