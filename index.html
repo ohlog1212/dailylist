@@ -585,7 +585,7 @@ const COMPANIES=[
    types:['라벨','포장','세트','기타'],
    boxes:[['box1','1호 박스'],['box2','2호 박스'],['box3','3호 박스'],['box4','4호 박스'],['boxEtc','기타 박스']],
    mats:[['tape','테이프']],
-   stock:null,serial:false,helper:false,ledger:false,desc:'스티커 · 포장 · 세트 · 기타'},
+   stock:null,serial:false,helper:false,ledger:true,desc:'스티커 · 포장 · 세트 · 기타'},
 ];
 let co=null;
 const P=name=>(co?co.prefix:'')+name;                 // 컬렉션 이름
@@ -1501,8 +1501,17 @@ $('#tab-stock').addEventListener('click',async e=>{
 let lgDate=todayStr(),lgCheck=null,lgCount=null,lgCfg={exclude:{},boxQty:{}},lgUnsubs=[];
 const lgCfgPath=()=>'config/'+(co?co.prefix:'')+'ledgercfg';
 function ledgerStop(){lgUnsubs.forEach(u=>u());lgUnsubs=[];lgCheck=null;lgCount=null;lgCfg={exclude:{},boxQty:{}};const b=$('#ledgerBadge');if(b)b.hidden=true}
+/* 상품명 보강: 이 업체의 다른 날 재고장에 적힌 이름 (WMS 엑셀에 상품명이 빠져 있어도 코드 대신 이름이 보이게) */
+let lgNames={};
+function lgLoadNames(){
+  const c1=P('stockcheck');lgNames={};if(!db)return;
+  db.collection(c1).get().then(s=>{if(P('stockcheck')!==c1)return;const m={};
+    s.docs.sort((a,b)=>b.id.localeCompare(a.id)).forEach(d=>((d.data()||{}).items||[]).forEach(it=>{if(it&&it.code&&it.name&&!m[it.code])m[it.code]=it.name}));
+    lgNames=m;renderLedger()}).catch(()=>{});
+}
 function ledgerStart(){
   ledgerStop();if(!db||!co||!co.ledger)return;
+  lgLoadNames();
   const d=lgDate,c1=P('stockcheck'),c2=P('stockcount'),cp=lgCfgPath();
   lgUnsubs.push(db.doc(c1+'/'+d).onSnapshot(s=>{if(lgDate!==d||P('stockcheck')!==c1)return;lgCheck=s.exists?s.data():null;renderLedger()},e=>toast(errMsg(e))));
   lgUnsubs.push(db.doc(c2+'/'+d).onSnapshot(s=>{if(lgDate!==d||P('stockcount')!==c2)return;if(!savers[c2+'/'+d]?.pending())lgCount=s.exists?s.data():null;renderLedger()},e=>toast(errMsg(e))));
@@ -1512,11 +1521,12 @@ function lgGo(ds){if(!ds)return;lgDate=ds;document.activeElement?.blur();ledgerS
 /* 재고장 대상: 배송·이동반출이 있거나, 세트구성·세트해체로 수량이 움직인 상품(팩과 그 구성품 모두) */
 const lgTarget=it=>n0(it.ship)>0||n0(it.moveOut)>0||n0(it.setMake)!==0||n0(it.setBreak)!==0;
 const lgExcluded=it=>!!lgCfg.exclude[it.code];
-function lgName(it){return it.name||itemBy(it.code)?.name||it.code}
+function lgName(it){return it.name||itemBy(it.code)?.name||lgNames[it.code]||it.code}
 /* 박스 입수: 품목 마스터 값 → 없으면 재고장에서 현장이 넣은 값(ledgercfg.boxQty) */
 /* 박스 입수는 단품에만 (세트·마스터에 없는 상품은 낱개만) */
 /* 마스터에 없는 상품은 WMS 코드로 판단: 502-S… 는 단품, 502-P… 는 팩 */
-const lgIsUnit=it=>{const m=itemBy(it.code);return m?kindOf(m)==='단품':/-S\d/i.test(String(it.code||''))};
+/* 품목 마스터가 아예 없는 업체(힐리)는 모든 상품에 박스 입수를 넣을 수 있게 */
+const lgIsUnit=it=>{const m=itemBy(it.code);if(m)return kindOf(m)==='단품';if(!(master.items&&master.items.length))return true;return /-S\d/i.test(String(it.code||''))};
 const lgBoxQty=it=>lgIsUnit(it)?(n0(itemBy(it.code)?.boxQty)||n0(lgCfg.boxQty[it.code])):0;
 async function lgSaveCfg(patch){
   if(!db||readOnly||!co){toast('저장 권한이 없습니다.');return false}
@@ -1609,19 +1619,26 @@ $('#lgToday').addEventListener('click',()=>lgGo(todayStr()));
 $('#lgAll').addEventListener('change',()=>{document.activeElement?.blur();renderLedger()});
 /* WMS 기간별 수불현황 엑셀을 작업일지에서 바로 올리기 (도우미가 없는 업체용 · 아마레도 대체 경로로 사용 가능) */
 function parseLedgerBook(wb){
-  const map=[['code',/상품코드|품목코드|제품코드|SKU/i],['name',/상품명|품목명|제품명|품명/],['open',/기초/],['inQty',/^입고/],['ship',/배송/],['moveIn',/이동반입|이동입고/],['moveOut',/이동반출|이동출고/],['setMake',/세트구성/],['setBreak',/세트해체/],['adj',/조정/],['ret',/반품/],['end',/기말/]];
+  const NAME_RE=/상품명|품목명|제품명|품명|상품이름|품목이름|제품이름|명칭|Description|ItemName|ProductName/i;
+  const map=[['code',/상품코드|품목코드|제품코드|SKU/i],['name',NAME_RE],['open',/기초/],['inQty',/^입고/],['ship',/배송/],['moveIn',/이동반입|이동입고/],['moveOut',/이동반출|이동출고/],['setMake',/세트구성/],['setBreak',/세트해체/],['adj',/조정/],['ret',/반품/],['end',/기말/]];
   for(const sn of wb.SheetNames){
     const aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:'',raw:false});
     for(let h=0;h<Math.min(aoa.length,12);h++){
       const hd=(aoa[h]||[]).map(x=>String(x).replace(/\s/g,''));
       const ci=hd.findIndex(x=>/상품코드|품목코드|제품코드|SKU/i.test(x));if(ci<0)continue;
       const col={};map.forEach(([k,re])=>{const i=hd.findIndex(x=>x&&re.test(x));if(i>=0&&!(k in col))col[k]=i});
+      if(Object.keys(col).length<3)continue; // 제목 줄에 '상품코드' 글자만 있는 경우
+      // 상품명 제목이 바로 위·아래 줄(두 줄 제목)에 있거나, 제목이 비어 있으면 코드 다음 칸의 글자 열을 상품명으로
+      if(!('name' in col)){for(const hh of [h+1,h-1]){const r2=(aoa[hh]||[]).map(x=>String(x).replace(/\s/g,''));const i=r2.findIndex(x=>x&&NAME_RE.test(x));if(i>=0&&i!==col.code){col.name=i;break}}}
+      if(!('name' in col)){const used=new Set(Object.values(col));const body=aoa.slice(h+1,h+40);
+        for(let i=col.code+1;i<hd.length&&i<col.code+4;i++){if(used.has(i))continue;const txt=body.filter(r=>String(r[i]??'').trim()).map(r=>String(r[i]).trim());
+          if(txt.length>=Math.min(3,body.length)&&txt.filter(t=>/[가-힣A-Za-z]/.test(t)&&!/^[\d.,-]+$/.test(t)).length>=txt.length*0.8){col.name=i;break}}}
       const known=new Set(Object.values(col));const items=[];
       aoa.slice(h+1).forEach(r=>{const code=String(r[col.code]??'').trim();if(!code||/^(합계|총계|소계)/.test(code))return;
         const o={code};map.forEach(([k])=>{if(k==='code'||!(k in col))return;const t=String(r[col[k]]??'').trim();if(k==='name')o.name=t;else o[k]=Number(t.replace(/,/g,''))||0});
         // 구글 시트 한 칸(50,000자) 안에 들어가야 하므로 수량 열만 저장 (브랜드·바코드 같은 부가 열은 뺌)
-        if(!o.name&&itemBy(code))o.name=itemBy(code).name;items.push(o)});
-      if(items.length)return {items,headers:hd.filter(Boolean)};
+        if(!o.name)o.name=itemBy(code)?.name||lgNames[code]||'';items.push(o)});
+      if(items.length)return {items,headers:hd.filter(Boolean),nameCol:'name' in col};
     }
   }
   return null;
@@ -1632,8 +1649,8 @@ $('#lgFile').addEventListener('change',async e=>{
   if(typeof XLSX==='undefined'){toast('엑셀 도구를 불러오지 못했습니다. 새로고침 후 다시 해 주세요.');return}
   let r=null;try{r=parseLedgerBook(XLSX.read(await f.arrayBuffer(),{type:'array'}))}catch{toast('파일을 읽지 못했습니다. WMS에서 내보낸 엑셀(.xls/.xlsx)인지 확인해 주세요.');return}
   if(!r){toast('"상품코드" 제목이 있는 줄을 찾지 못했습니다. 기간별 수불현황 엑셀인지 확인해 주세요.');return}
-  const nT=r.items.filter(lgTarget).length;
-  if(!confirm(`${f.name}\n상품 ${r.items.length}개 (배송·이동반출·세트 ${nT}개)를 ${lgDate.slice(5).replace('-','/')} ${co.short} 재고장에 넣을까요?${lgCheck?'\n\n※ 이미 있는 이날 자료를 덮어씁니다.':''}`))return;
+  const nT=r.items.filter(lgTarget).length,nNo=r.items.filter(it=>lgTarget(it)&&!it.name).length;
+  if(!confirm(`${f.name}\n상품 ${r.items.length}개 (배송·이동반출·세트 ${nT}개)를 ${lgDate.slice(5).replace('-','/')} ${co.short} 재고장에 넣을까요?${r.nameCol?'':'\n\n※ 이 엑셀에는 상품명 열이 없어 품목 마스터·다른 날 재고장의 이름을 씁니다.'}${nNo?`\n※ 이름을 찾지 못한 상품 ${nNo}개는 코드로 보입니다.`:''}${lgCheck?'\n\n※ 이미 있는 이날 자료를 덮어씁니다.':''}`))return;
   let items=r.items;const size=o=>JSON.stringify(o).length;
   const mk=its=>({date:lgDate,month:lgDate.slice(0,7),loadedAt:Date.now(),warehouse:'Picking Zone',source:'file',file:f.name,by:lsGet('myName')||'',items:its});
   // 시트 한 칸 한도(50,000자) 안으로: 움직임도 재고도 없는 상품부터 뺌
