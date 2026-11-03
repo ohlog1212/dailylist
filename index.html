@@ -150,7 +150,7 @@ label.btn{display:inline-flex;align-items:center}
 .addrow .btn{height:38px}
 .tasks{display:flex;flex-direction:column;gap:10px}
 .task{border:1px solid var(--line);border-left:5px solid var(--tc,var(--t-etc));border-radius:var(--r);background:var(--surface);min-width:0}
-.task[data-type="세트"]{--tc:var(--t-set)} .task[data-type="라벨"]{--tc:var(--t-label)} .task[data-type="QR"]{--tc:var(--t-qr)} .task[data-type="포장"]{--tc:var(--t-pack)}
+.task[data-type="세트"]{--tc:var(--t-set)} .task[data-type="라벨"]{--tc:var(--t-label)} .task[data-type="QR"]{--tc:var(--t-qr)} .task[data-type="포장"]{--tc:var(--t-pack)} .task[data-type="실링"]{--tc:var(--t-qr)}
 /* 타업체 지원 */
 :root{--t-sup:#a23b4a} @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--t-sup:#ec8f9b}} :root[data-theme="dark"]{--t-sup:#ec8f9b}
 .task[data-type="지원"]{--tc:var(--t-sup);background:color-mix(in srgb,var(--surface) 92%,var(--t-sup))}
@@ -585,7 +585,9 @@ const COMPANIES=[
    types:['라벨','포장','세트','기타'],
    boxes:[['box1','1호 박스'],['box2','2호 박스'],['box3','3호 박스'],['box4','4호 박스'],['boxEtc','기타 박스']],
    mats:[['tape','테이프']],
-   stock:null,serial:false,helper:false,ledger:true,desc:'스티커 · 포장 · 세트 · 기타'},
+   stock:null,serial:false,helper:false,ledger:true,desc:'스티커 · 포장 · 세트 · 기타',
+   /* 작업구분별로 고를 수 있는 상품을 정해 둔 경우 (실링은 디바이스·코일 7종만) */
+   typeItems:{'실링':['02-006-209-01','02-006-120-05','02-004-002-03','02-004-002-01','HEALY-3-0-KR','REF 0010-MH','REF 0009-N4']}},
 ];
 let co=null;
 const P=name=>(co?co.prefix:'')+name;                 // 컬렉션 이름
@@ -888,6 +890,9 @@ function itemOptions(type,code){
   const want=kindFor(type);
   const o=i=>`<option value="${esc(i.code)}">${esc(i.name)}</option>`;
   const head='<option value="">상품 선택</option>',tail='<option value="__custom">직접 입력 (목록에 없는 작업)</option>';
+  const only=co&&co.typeItems&&co.typeItems[type];
+  if(only){const l=only.map(c=>itemBy(c)).filter(Boolean);const cur=code&&!only.includes(code)?itemBy(code):null;if(cur)l.push(cur);
+    return head+l.map(o).join('')+(l.length?'':`<option value="" disabled>${esc(tl(type))} 품목이 없습니다 · 품목·설정에서 추가</option>`)+tail}
   if(want==='전체'){
     const g=k=>{const l=master.items.filter(i=>kindOf(i)===k);return l.length?`<optgroup label="${k}">${l.map(o).join('')}</optgroup>`:''};
     return head+g('세트')+g('단품')+(master.items.length?'':'<option value="" disabled>품목이 없습니다 · 품목·설정에서 추가</option>')+tail;
@@ -920,7 +925,8 @@ function fillTask(el,t){
   if(isSup(t)){fillSup(el,t);return}
   el.dataset.type=t.type;
   $$('.chip',el).forEach(c=>c.classList.toggle('on',c.dataset.v===t.type));
-  const cur=itemBy(t.code);const want=kindFor(t.type);const extra=cur&&want!=='전체'&&kindOf(cur)!==want?t.code:'';
+  const cur=itemBy(t.code);const want=kindFor(t.type);const only=co&&co.typeItems&&co.typeItems[t.type];
+  const extra=cur&&(only?!only.includes(t.code):(want!=='전체'&&kindOf(cur)!==want))?t.code:'';
   const sel=el.querySelector('[data-f="itemSel"]');const key=t.type+'|'+master._v+'|'+extra;
   if(sel.dataset.k!==key){sel.innerHTML=itemOptions(t.type,extra);sel.dataset.k=key}
   const it=itemBy(t.code);const selV=it?t.code:(t.code||t.name||el.dataset.custom?'__custom':'');
