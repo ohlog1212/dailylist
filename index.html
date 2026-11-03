@@ -585,7 +585,10 @@ const COMPANIES=[
    types:['라벨','포장','세트','기타'],
    boxes:[['box1','1호 박스'],['box2','2호 박스'],['box3','3호 박스'],['box4','4호 박스'],['boxEtc','기타 박스']],
    mats:[['tape','테이프']],
-   stock:null,serial:false,helper:false,ledger:true,desc:'스티커 · 포장 · 세트 · 기타',
+   /* 부자재: 실링·스티커 작업 수량만큼 그 상품 차감 + 상품코드 없는 스티커 2종은 작업 종류 합계로 차감 */
+   stock:{task:['실링','라벨'],kind:'단품',label:'부자재',taskLabel:'실링·스티커 작업',unit:'개',parts:null,
+     extras:[{code:'@SEAL',name:'개봉금지 스티커',per:'실링',re:/개봉금지/},{code:'@VOID',name:'보이드라벨',per:'라벨',re:/보이드/}]},
+   serial:false,helper:false,ledger:true,desc:'스티커 · 포장 · 세트 · 기타',
    /* 작업구분별로 고를 수 있는 상품을 정해 둔 경우 (실링은 디바이스·코일 7종만) */
    typeItems:{'실링':['02-006-209-01','02-006-120-05','02-004-002-03','02-004-002-01','HEALY-3-0-KR','REF 0010-MH','REF 0009-N4']}},
 ];
@@ -1304,13 +1307,18 @@ const goneTasks=new Set();
 const stockPath=()=>'config/'+(co?co.prefix:'')+'stock';
 const SC=()=>(co&&co.stock)||{task:'라벨',kind:'단품',label:'부자재',taskLabel:'작업',unit:'개',parts:null};
 const STOCK_TH=200;
+/* 차감에 쓰는 작업 종류 (힐리는 실링·스티커 둘 다) */
+const stTypes=()=>{const t=SC().task;return Array.isArray(t)?t:[t]};
+/* 상품코드 없는 부자재(개봉금지 스티커·보이드라벨): per 작업 종류의 전체 수량만큼 차감 */
+const extraOf=m=>(SC().extras||[]).find(e=>e.code===(m&&m.code));
+const extraByName=nm=>{const s=String(nm||'').replace(/\s/g,'');return s?(SC().extras||[]).find(e=>e.re.test(s)||e.name.replace(/\s/g,'')===s):null};
 function stockStop(){stockUnsubs.forEach(u=>u());stockUnsubs=[];stock={items:[]};stockTasks={};stockEdit=null;stockOpen=null;stockPending=null;
   const f=$('#stockForm');if(f)f.hidden=true;const im=$('#stockImport');if(im)im.hidden=true;renderStock()}
 function stockStart(){
   if(!db||!co)return;stockStop();
-  const sp=stockPath(),tc=P('tasks'),ty=SC().task;
+  const sp=stockPath(),tc=P('tasks'),ty=stTypes();
   stockUnsubs.push(db.doc(sp).onSnapshot(s=>{if(stockPath()!==sp)return;const d=s.exists?s.data():{};stock={...d,items:d.items||[]};renderStock()},e=>toast(errMsg(e))));
-  stockUnsubs.push(db.collection(tc).where('type','==',ty).limit(1000).onSnapshot(s=>{if(P('tasks')!==tc)return;const n={};s.docs.forEach(d=>n[d.id]=d.data());stockTasks=n;renderStock()},e=>toast(errMsg(e))));
+  stockUnsubs.push((ty.length>1?db.collection(tc).where('type','in',ty):db.collection(tc).where('type','==',ty[0])).limit(1000).onSnapshot(s=>{if(P('tasks')!==tc)return;const n={};s.docs.forEach(d=>n[d.id]=d.data());stockTasks=n;renderStock()},e=>toast(errMsg(e))));
 }
 function queueStock(){clearTimeout(stockT);stockT=setTimeout(renderStock,400)}
 const tAt=t=>n0(t.createdAt)||Date.parse(t.date)||0;
@@ -1319,10 +1327,11 @@ const partOrder=p=>{const ps=SC().parts||[];const i=ps.indexOf(p);return i<0?99:
 function stockName(m){const it=itemBy(m.code);return (it?it.name:m.name)||m.code}
 function stockFull(m){return stockName(m)+(m.part?` · ${m.part}`:'')}
 function stockUses(m){
-  const ty=SC().task,all={...stockTasks};
-  for(const id in tasks){if(tasks[id].type===ty)all[id]=tasks[id];else delete all[id]}
+  const ty=stTypes(),all={...stockTasks},x=extraOf(m);
+  for(const id in tasks){if(ty.includes(tasks[id].type))all[id]=tasks[id];else delete all[id]}
   goneTasks.forEach(id=>delete all[id]);
-  return Object.values(all).filter(t=>t.code===m.code&&tAt(t)>=n0(m.baseAt)&&n0(t.qty))
+  const hit=x?t=>t.type===x.per:t=>t.code===m.code;
+  return Object.values(all).filter(t=>hit(t)&&tAt(t)>=n0(m.baseAt)&&n0(t.qty))
     .map(t=>({date:t.date,qty:n0(t.qty)})).sort((a,b)=>b.date.localeCompare(a.date));
 }
 function stockCalc(m){
@@ -1344,7 +1353,7 @@ function renderStock(){
   $('#stockAdd').textContent=`+ ${sc.label} 등록`;
   $('#stockNote').innerHTML=parts
     ?`일지에 <b>${esc(sc.taskLabel)}</b>을 입력하면 앞·뒤 스티커가 자동으로 차감됩니다. 모자라면 <b>[발주]</b>를 눌러 주세요.`
-    :`일지에 <b>${esc(sc.taskLabel)}</b>을 입력하면 1개당 1장씩 자동으로 차감됩니다. 모자라면 <b>[발주]</b>를 눌러 주세요 — 사무실에 바로 알림이 갑니다.`;
+    :`일지에 <b>${esc(sc.taskLabel)}</b>을 입력하면 그 상품이 1개당 1개씩 자동으로 차감됩니다.${(sc.extras||[]).map(e=>` <b>${esc(e.name)}</b>는 ${esc(tl(e.per))} 작업 수량만큼,`).join('').replace(/,$/,' 함께 차감됩니다.')} 모자라면 <b>[발주]</b>를 눌러 주세요 — 사무실에 바로 알림이 갑니다.`;
   const unit=m=>esc(m.unit||sc.unit);
   $('#stockAlertCard').innerHTML='';
   const tb=$('#stockTable');if(tb.contains(document.activeElement))return;
@@ -1356,7 +1365,8 @@ function renderStock(){
     rows.map(({m,c})=>{
       const nm=stockName(m),same=parts&&nm===prev;prev=nm;
       const od=m.orderedAt?esc(m.orderedAt.slice(5).replace('-','/')):'';
-      return `<tr><td>${same?'<span class="note">〃</span>':`<b>${esc(nm)}</b><div class="note mono">${esc(m.code)}</div>`}</td>${parts?`<td>${esc(m.part||'')}</td>`:''}
+      const xo=extraOf(m);
+      return `<tr><td>${same?'<span class="note">〃</span>':`<b>${esc(nm)}</b><div class="note${xo?'':' mono'}">${xo?`${esc(tl(xo.per))} 작업 수량만큼 차감`:esc(m.code)}</div>`}</td>${parts?`<td>${esc(m.part||'')}</td>`:''}
         <td class="n" title="재고수량을 맞춘 뒤 누적 입고 +${fmtN(c.rcv)} · 누적 사용 −${fmtN(c.used)}">${fmtN(n0(m.opening))}</td><td class="n">${(()=>{const v=(m.receipts||[]).filter(r=>r.date===today).reduce((a,r)=>a+n0(r.qty),0);return v?'+'+fmtN(v):''})()}</td><td class="n">${(()=>{const v=c.uses.filter(u=>u.date===today).reduce((a,u)=>a+u.qty,0);return v?'−'+fmtN(v):''})()}</td>
         <td class="n"><span class="remain ${c.remain<=0?'bad':''}">${fmtN(c.remain)}</span> ${unit(m)}</td>
         <td><div class="row" style="flex-wrap:nowrap"><button class="btn small${od?' primary':''}" data-sact="order" data-id="${m.id}" type="button" title="${od?'발주 요청됨 — 누르면 취소':'사무실에 발주(출력) 요청'}">${od?'발주됨 '+od:'발주'}</button>
@@ -1381,7 +1391,7 @@ function openStockForm(m){
     $('#sf-qty').focus();return;
   }
   f.innerHTML=`<div class="stkform">
-    <label class="f wide2">상품<select class="in" id="sf-code"><option value="">상품 선택</option>${stockProducts().map(i=>`<option value="${esc(i.code)}">${esc(i.name)} · ${esc(i.code)}</option>`).join('')}</select></label>
+    <label class="f wide2">상품<select class="in" id="sf-code"><option value="">상품 선택</option>${(sc.extras||[]).map(x=>`<option value="${esc(x.code)}">${esc(x.name)} (${esc(tl(x.per))} 수량만큼 차감)</option>`).join('')}${stockProducts().map(i=>`<option value="${esc(i.code)}">${esc(i.name)} · ${esc(i.code)}</option>`).join('')}</select></label>
     ${sc.parts?sc.parts.map((p,i)=>`<label class="f"><span><input type="checkbox" id="sf-p${i}" checked> ${esc(p)} 재고수량</span><input class="in num" id="sf-q${i}" type="number" inputmode="numeric"></label>`).join('')
       :`<label class="f">현재 재고수량<input class="in num" id="sf-q0" type="number" inputmode="numeric"></label>`}
     <label class="f">단위<input class="in" id="sf-unit" value="${esc(sc.unit)}"></label>
@@ -1399,9 +1409,11 @@ $('#stockXlsx').addEventListener('click',async()=>{
   const sc=SC(),parts=!!sc.parts;
   const head=['상품코드','상품명',...(parts?['구분']:[]),'재고수량','단위','입고합계','사용합계','발주요청'];
   const list=(stock.items||[]).map(m=>({m,c:stockCalc(m)})).sort((a,b)=>stockName(a.m).localeCompare(stockName(b.m))||partOrder(a.m.part)-partOrder(b.m.part));
-  const aoa=[head,...list.map(({m,c})=>[m.code,stockName(m),...(parts?[m.part||'']:[]),c.remain,m.unit||sc.unit,c.rcv,c.used,m.orderedAt||''])];
+  // 상품코드 없는 부자재는 코드 칸을 비워 둠 (다시 올릴 때 이름으로 찾음)
+  const aoa=[head,...list.map(({m,c})=>[extraOf(m)?'':m.code,stockName(m),...(parts?[m.part||'']:[]),c.remain,m.unit||sc.unit,c.rcv,c.used,m.orderedAt||''])];
   if(!list.length){ // 빈 양식: 품목 마스터로 채움
     stockProducts().forEach(i=>{(parts?sc.parts:['']).forEach(p=>aoa.push([i.code,i.name,...(parts?[p]:[]),'',sc.unit,'','','']))});
+    (sc.extras||[]).forEach(x=>aoa.push(['',x.name,...(parts?['']:[]),'',sc.unit,'','','']));
   }
   const ws=XLSX.utils.aoa_to_sheet(aoa);ws['!cols']=head.map((h,i)=>({wch:i===1?34:i===0?14:10}));
   const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'재고');
@@ -1420,7 +1432,8 @@ $('#stockFile').addEventListener('change',async e=>{
   if(h<0){toast('"상품코드"와 "재고수량" 제목이 있는 줄을 찾지 못했습니다. 엑셀 받기로 받은 양식을 써 주세요.');return}
   const cur=stock.items||[];const add=[],chg=[];let same=0,skip=0;
   aoa.slice(h+1).forEach(r=>{
-    const code=String(r[ci]??'').trim();if(!code)return;
+    let code=String(r[ci]??'').trim();
+    if(!code){const x=extraByName(ni>=0?r[ni]:'');if(!x){if(ni>=0&&String(r[ni]??'').trim())skip++;return}code=x.code} // 상품코드 없는 부자재는 이름으로
     const part=parts?normPart(pi>=0?r[pi]:''):'';if(parts&&!sc.parts.includes(part)){skip++;return}
     const qRaw=r[qi],q=qRaw===''||qRaw==null?null:num(qRaw);
     const th=ti>=0&&r[ti]!==''?num(r[ti]):null,u=ui>=0?String(r[ui]||'').trim():'';
@@ -1456,7 +1469,7 @@ $('#tab-stock').addEventListener('click',async e=>{
   if(act==='impApply'&&stockPending){
     const {add,chg}=stockPending;
     chg.forEach(c=>{const m=items.find(x=>x.id===c.id);if(!m)return;if(c.q!==null&&c.q!==''){m.opening=c.q;m.baseAt=now;m.orderedAt=''}if(c.th!==null&&c.th!=='')m.threshold=c.th;if(c.u)m.unit=c.u});
-    add.forEach((a,i)=>items.push({id:'m'+now.toString(36)+i,code:a.code,name:(itemBy(a.code)?.name)||a.name,part:a.part,opening:a.q,baseAt:now,threshold:a.th===null||a.th===''?STOCK_TH:a.th,unit:a.u||sc.unit,receipts:[],orderedAt:''}));
+    add.forEach((a,i)=>items.push({id:'m'+now.toString(36)+i,code:a.code,name:(itemBy(a.code)?.name)||extraOf(a)?.name||a.name,part:a.part,opening:a.q,baseAt:now,threshold:a.th===null||a.th===''?STOCK_TH:a.th,unit:a.u||sc.unit,receipts:[],orderedAt:''}));
     b.disabled=true;if(await saveStock(items,`${add.length}건 추가, ${chg.length}건 변경했습니다.`)){stockPending=null;$('#stockImport').hidden=true}else b.disabled=false;
     return;
   }
@@ -1476,8 +1489,9 @@ $('#tab-stock').addEventListener('click',async e=>{
     if(!ps.length){toast('앞(안쪽)·뒤 중 하나 이상 골라 주세요.');return}
     const dup=ps.filter(x=>items.some(m=>m.code===code&&(m.part||'')===x.p));
     if(dup.length){toast(`이미 등록된 항목입니다: ${dup.map(x=>x.p||itemBy(code)?.name).join(', ')}`);return}
-    ps.forEach((x,i)=>items.push({id:'m'+now.toString(36)+i,code,name:itemBy(code)?.name||code,part:x.p,opening:n0(x.q),baseAt:now,threshold:th,unit,receipts:[],orderedAt:''}));
-    if(await saveStock(items,`${itemBy(code)?.name||code} 등록했습니다.`)){stockEdit=null;$('#stockForm').hidden=true}
+    const nm0=itemBy(code)?.name||extraOf({code})?.name||code;
+    ps.forEach((x,i)=>items.push({id:'m'+now.toString(36)+i,code,name:nm0,part:x.p,opening:n0(x.q),baseAt:now,threshold:th,unit,receipts:[],orderedAt:''}));
+    if(await saveStock(items,`${nm0} 등록했습니다.`)){stockEdit=null;$('#stockForm').hidden=true}
     return;
   }
   const i=items.findIndex(x=>x.id===b.dataset.id);const m=items[i];if(!m)return;
