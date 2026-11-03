@@ -149,7 +149,7 @@ label.btn{display:inline-flex;align-items:center}
 .addrow{display:flex;gap:6px;flex-wrap:wrap}
 .addrow .btn{height:38px}
 .tasks{display:flex;flex-direction:column;gap:10px}
-.task{border:1px solid var(--line);border-left:5px solid var(--tc,var(--t-etc));border-radius:var(--r);background:var(--surface);min-width:0}
+.task{--tc:var(--t-etc);border:1px solid var(--line);border-left:5px solid var(--tc,var(--t-etc));border-radius:var(--r);background:var(--surface);min-width:0}
 .task[data-type="세트"]{--tc:var(--t-set)} .task[data-type="라벨"]{--tc:var(--t-label)} .task[data-type="QR"]{--tc:var(--t-qr)} .task[data-type="포장"]{--tc:var(--t-pack)} .task[data-type="실링"]{--tc:var(--t-qr)}
 /* 타업체 지원 */
 :root{--t-sup:#a23b4a} @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--t-sup:#ec8f9b}} :root[data-theme="dark"]{--t-sup:#ec8f9b}
