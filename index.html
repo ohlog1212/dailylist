@@ -1353,7 +1353,7 @@ function renderStock(){
   $('#stockAdd').textContent=`+ ${sc.label} 등록`;
   $('#stockNote').innerHTML=parts
     ?`일지에 <b>${esc(sc.taskLabel)}</b>을 입력하면 앞·뒤 스티커가 자동으로 차감됩니다. 모자라면 <b>[발주]</b>를 눌러 주세요.`
-    :`일지에 <b>${esc(sc.taskLabel)}</b>을 입력하면 그 상품이 1개당 1개씩 자동으로 차감됩니다.${(sc.extras||[]).map(e=>` <b>${esc(e.name)}</b>는 ${esc(tl(e.per))} 작업 수량만큼,`).join('').replace(/,$/,' 함께 차감됩니다.')} 모자라면 <b>[발주]</b>를 눌러 주세요 — 사무실에 바로 알림이 갑니다.`;
+    :`일지에 <b>${esc(sc.taskLabel)}</b>을 입력하면 그 상품이 1개당 1개씩 자동으로 차감됩니다.${(sc.extras||[]).length?' 함께 차감: '+sc.extras.map(e=>`<b>${esc(e.name)}</b> = ${esc(tl(e.per))} 작업 수량`).join(', ')+'.':''} 모자라면 <b>[발주]</b>를 눌러 주세요 — 사무실에 바로 알림이 갑니다.`;
   const unit=m=>esc(m.unit||sc.unit);
   $('#stockAlertCard').innerHTML='';
   const tb=$('#stockTable');if(tb.contains(document.activeElement))return;
