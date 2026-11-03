@@ -587,7 +587,7 @@ const COMPANIES=[
    mats:[['tape','테이프']],
    /* 부자재: 실링·스티커 작업 수량만큼 그 상품 차감 + 상품코드 없는 스티커 2종은 작업 종류 합계로 차감 */
    stock:{task:['실링','라벨'],kind:'단품',label:'부자재',taskLabel:'실링·스티커 작업',unit:'개',parts:null,
-     extras:[{code:'@SEAL',name:'개봉금지 스티커',per:'실링',re:/개봉금지/},{code:'@VOID',name:'보이드라벨',per:'라벨',re:/보이드/}]},
+     extras:[{code:'@SEAL',name:'▣ 개봉금지 스티커',per:'실링',re:/개봉금지/},{code:'@VOID',name:'▣ 보이드라벨',per:'라벨',re:/보이드/}]},
    serial:false,helper:false,ledger:true,desc:'스티커 · 포장 · 세트 · 기타',
    /* 작업구분별로 고를 수 있는 상품을 정해 둔 경우 (실링은 디바이스·코일 7종만) */
    typeItems:{'실링':['02-006-209-01','02-006-120-05','02-004-002-03','02-004-002-01','HEALY-3-0-KR','REF 0010-MH','REF 0009-N4']}},
@@ -1324,7 +1324,7 @@ function queueStock(){clearTimeout(stockT);stockT=setTimeout(renderStock,400)}
 const tAt=t=>n0(t.createdAt)||Date.parse(t.date)||0;
 const rAt=r=>n0(r.at)||Date.parse(r.date)||0;
 const partOrder=p=>{const ps=SC().parts||[];const i=ps.indexOf(p);return i<0?99:i};
-function stockName(m){const it=itemBy(m.code);return (it?it.name:m.name)||m.code}
+function stockName(m){const x=extraOf(m);if(x)return x.name;const it=itemBy(m.code);return (it?it.name:m.name)||m.code}
 function stockFull(m){return stockName(m)+(m.part?` · ${m.part}`:'')}
 function stockUses(m){
   const ty=stTypes(),all={...stockTasks},x=extraOf(m);
