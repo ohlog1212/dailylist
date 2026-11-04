@@ -479,28 +479,20 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
   <section id="tab-export" hidden>
     <div class="datebar">
       <input type="month" id="exMonth" aria-label="내보낼 월">
-      <label class="row" style="font-weight:600;font-size:14px"><input type="checkbox" id="exOnlyNew" checked> 아직 반영 안 한 작업만</label>
     </div>
     <div class="sheet" style="margin-bottom:14px">
       <h2>작업현황(입력시트) 양식 미리보기 <span class="sub" id="exCount"></span>
         <span class="right">
-          <button class="btn small primary" id="exXlsx">엑셀 파일 받기</button>
-          <button class="btn small" id="exCopy">붙여넣기용 복사</button>
-          <button class="btn small ok" id="exMark">반영 완료로 표시</button>
+          <button class="btn small primary" id="exXlsx">엑셀파일 만들기</button>
         </span>
       </h2>
       <div class="tablewrap" style="max-height:60vh"><table class="xl" id="exTable"></table></div>
     </div>
     <div class="sheet">
-      <h2>현황 엑셀에 넣는 방법</h2>
-      <div class="body note">
-        <p style="margin:0"><b>방법 1 · 자동 추가 (권장)</b><br>
-        <code>엑셀 파일 받기</code>로 받은 파일을 준비하고, 함께 드린 <code>작업일지_엑셀반영.bat</code>을 실행하세요. 받은 파일과 월별 <code>물류가공작업 현황.xlsx</code>를 차례로 고르면 <code>작업현황(입력시트)</code> 맨 아래에 행이 추가되고, 합계·생산성 수식과 서식도 윗줄을 따라 채워집니다. 이미 있는 행(날짜·코드·수량·시간·시리얼이 같은 행)은 건너뜁니다. 현황 파일은 닫아 둔 상태에서 실행하세요.</p>
-        <p style="margin:0"><b>방법 2 · 직접 붙여넣기</b><br>
-        <code>붙여넣기용 복사</code>를 누른 뒤 현황 파일 <code>작업현황(입력시트)</code>에서 마지막 행 바로 아래 <b>A열</b> 칸을 선택하고 붙여넣기 하세요. A~N열(날짜 ~ 시리얼 끝)이 원래 양식 순서대로 들어갑니다.</p>
-        <p style="margin:0">넣은 다음에는 <code>반영 완료로 표시</code>를 눌러 두세요. 다음 달부터는 새로 입력한 작업만 목록에 나옵니다.</p>
-      </div>
+      <h2>엑셀파일 만들기</h2>
+      <div class="body note" id="exHow"></div>
     </div>
+    <input type="file" id="exTplFile" accept=".xlsx" hidden>
   </section>
 
   <!-- ===== 품목·설정 ===== -->
@@ -539,6 +531,7 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
 <script src="config.js"></script>
 <script src="sheet-db.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script>
 (function(){
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -1094,10 +1087,9 @@ $('#toHelper').addEventListener('click',async e=>{
 
 /* ---------- export ---------- */
 $('#exMonth').addEventListener('change',e=>{if(e.target.value){exMonth=e.target.value;ensureSub();renderExport()}});
-$('#exOnlyNew').addEventListener('change',renderExport);
+function shiftMonth(m,n){const[y,mo]=m.split('-').map(Number);const d=new Date(y,mo-1+n,1);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')}
 function exportRows(){
-  const only=$('#exOnlyNew').checked;
-  return Object.entries(tasks).filter(([,t])=>t.month===exMonth&&!isSup(t)&&(t.code||t.name)&&(!only||!t.exported))
+  return Object.entries(tasks).filter(([,t])=>t.month===exMonth&&!isSup(t)&&(t.code||t.name))
     .sort((a,b)=>(a[1].date+(a[1].createdAt||0)).localeCompare(b[1].date+(b[1].createdAt||0))||(a[1].createdAt-b[1].createdAt));
 }
 function noteOf(t){return [t.worker&&t.worker!=='직원'?t.worker:'',t.note||''].filter(Boolean).join(' ')}
@@ -1106,16 +1098,106 @@ function renderExport(){
   $('#exMonth').value=exMonth;
   const rows=exportRows();
   $('#exCount').textContent=`${rows.length}행`;
-  ['exXlsx','exCopy','exMark'].forEach(k=>$('#'+k).disabled=!rows.length);
-  $('#exXlsx').disabled=!rows.length||!dl||typeof XLSX==='undefined';
-  $('#exXlsx').title=!dl?'이 화면에서는 파일 저장을 쓸 수 없습니다. 붙여넣기용 복사를 이용하세요.':'';
-  $('#exMark').disabled=!rows.length||readOnly||!db||!$('#exOnlyNew').checked;
+  $('#exXlsx').disabled=!rows.length||(co.id==='amare'?typeof JSZip==='undefined':typeof XLSX==='undefined');
+  const mm=+exMonth.slice(5),pm=shiftMonth(exMonth,-1);
+  $('#exHow').innerHTML=co.id==='amare'
+    ?`<p style="margin:0"><code>엑셀파일 만들기</code>를 누르고 <b>전월 현황 파일</b>(예: <code>${esc(pm)} 아마레코리아_물류가공작업 현황.xlsx</code>)을 고르면, 그 파일 양식 그대로 <b>${esc(exMonth)} 아마레코리아_물류가공작업 현황.xlsx</b>가 만들어집니다.</p>
+       <p style="margin:0">· <b>작업현황(입력시트)</b> 맨 아래에 ${mm}월 작업이 추가되고 합계·생산성 수식과 서식이 윗줄과 같이 들어갑니다.<br>· <b>Summary</b> 제목이 ${mm}월로 바뀌고 작업수량은 ${mm}월 행부터 합산합니다.<br>· <b>작업현황구분</b> 표가 ${mm}월 작업으로 바뀌고, 피벗은 파일을 열 때 새로 고쳐집니다.<br>· 출고내역 시트(일일·당월·전월·3개월)는 전월 파일 내용 그대로이니 WMS 자료로 바꿔 넣어 주세요.</p>`
+    :`<p style="margin:0"><code>엑셀파일 만들기</code>를 누르면 ${mm}월 작업이 입력시트 양식(A~N열)으로 저장됩니다.</p>`;
   $('#exTable').innerHTML=`<thead><tr><th>A 날짜</th><th>B 작업구분</th><th>C 상품코드</th><th>D 상품명</th><th class="n">E 수량</th><th class="n">F 남</th><th class="n">G 여</th><th class="n">H 합계</th><th class="n">I 시간(분)</th><th class="n">J 생산성</th><th class="n">K 1인당</th><th>L 비고</th><th>M 시리얼</th><th>N</th></tr></thead><tbody>`+
     (rows.length?rows.map(([,t])=>{const h=n0(t.male)+n0(t.female);const j=t.minutes?t.qty/t.minutes:'';return `<tr><td class="mono">${t.date.slice(5).replace('-','/')}</td><td>${esc(t.type)}</td><td class="mono">${esc(t.code)}</td><td>${esc(t.name)}</td><td class="n">${t.qty}</td><td class="n">${t.male||''}</td><td class="n">${t.female||''}</td><td class="n">${h}</td><td class="n">${t.minutes}</td><td class="n">${j!==''?j.toFixed(2):''}</td><td class="n">${j!==''&&h?(j/h).toFixed(2):''}</td><td>${esc(noteOf(t))}</td><td class="mono">${esc(t.serialFrom)}</td><td class="mono">${esc(t.serialTo)}</td></tr>`}).join('')
-    :`<tr><td colspan="14" class="note" style="padding:18px;white-space:normal">${$('#exOnlyNew').checked?'이 달에 아직 엑셀에 반영하지 않은 작업이 없습니다.':'이 달의 가공작업 기록이 없습니다.'}</td></tr>`)+'</tbody>';
+    :`<tr><td colspan="14" class="note" style="padding:18px;white-space:normal">이 달의 가공작업 기록이 없습니다.</td></tr>`)+'</tbody>';
+}
+/* 파일 저장: 저장 도우미(dl)가 있으면 그것으로, 없으면 브라우저 다운로드 */
+async function saveFile(filename,blob){
+  if(dl){try{await dl.save({filename,data:blob});return true}
+    catch(e){if(e?.code==='declined')return false;if(e?.code==='rate_limited'){toast('저장 창이 이미 열려 있습니다.');return false}}}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);return true;
 }
 $('#exXlsx').addEventListener('click',async()=>{
-  const rows=exportRows().map(x=>x[1]);if(!rows.length||!dl)return;
+  if(!exportRows().length)return;
+  if(co.id==='amare'){$('#exTplFile').value='';$('#exTplFile').click();return}
+  if(await saveFile(`${exMonth} ${co.short} 작업일지_입력시트.xlsx`,simpleBook(exportRows().map(x=>x[1]))))toast('엑셀 파일을 만들었습니다.');
+});
+$('#exTplFile').addEventListener('change',async e=>{
+  const f=e.target.files[0];if(!f)return;const b=$('#exXlsx');b.disabled=true;b.textContent='만드는 중…';
+  try{
+    const blob=await amareBook(f,exMonth,exportRows().map(x=>x[1]));
+    if(await saveFile(`${exMonth} 아마레코리아_물류가공작업 현황.xlsx`,blob))toast(`${exMonth} 현황 파일을 만들었습니다.`);
+  }catch(er){toast(er.message||String(er))}
+  b.textContent='엑셀파일 만들기';renderExport();
+});
+/* 아마레 월별 현황: 전월 현황 파일을 그대로 두고(서식·피벗·수식 유지) XML 만 고쳐 이번 달 작업을 넣음 */
+async function amareBook(file,month,rows){
+  const zip=await JSZip.loadAsync(file);
+  const rd=async p=>{const f=zip.file(p);if(!f)throw new Error('현황 파일 양식이 아닙니다 ('+p+' 없음)');return f.async('string')};
+  const X=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const relMap=xml=>{const o={};(xml.match(/<Relationship\b[^>]*>/g)||[]).forEach(t=>{const id=t.match(/\bId="([^"]+)"/),tg=t.match(/\bTarget="([^"]+)"/),ty=t.match(/\bType="([^"]+)"/);if(id&&tg)o[id[1]]={t:tg[1],ty:ty?ty[1]:''}});return o};
+  const abs=(base,t)=>{if(t.startsWith('/'))return t.slice(1);const p=base.split('/');p.pop();t.split('/').forEach(x=>{if(x==='..')p.pop();else if(x!=='.')p.push(x)});return p.join('/')};
+  let wbx=await rd('xl/workbook.xml');const wrel=relMap(await rd('xl/_rels/workbook.xml.rels'));
+  const sheetPath=nm=>{const t=(wbx.match(/<sheet\b[^>]*>/g)||[]).find(t=>t.includes(`name="${X(nm)}"`));if(!t)throw new Error(`'${nm}' 시트가 없습니다. 전월 현황 파일을 골라 주세요.`);return abs('xl/workbook.xml',wrel[t.match(/r:id="([^"]+)"/)[1]].t)};
+  const pIn=sheetPath('작업현황(입력시트)'),pSum=sheetPath('Summary'),pGb=sheetPath('작업현황구분');
+  // sheetData 의 행을 [{r,at,cells}] 로 다루는 도우미
+  const rowsOf=xml=>{const a=xml.indexOf('<sheetData'),o=xml.indexOf('>',a)+1,b=xml.indexOf('</sheetData>');const list=[];
+    xml.slice(o,b).replace(/<row\b([^>]*?)(\/>|>([\s\S]*?)<\/row>)/g,(m,at,_,c)=>{list.push({r:+at.match(/\br="(\d+)"/)[1],at,cells:c||''});return''});return {list,head:xml.slice(0,o),tail:xml.slice(b)}};
+  const joinRows=({list,head,tail})=>head+list.sort((x,y)=>x.r-y.r).map(w=>`<row${w.at}>${w.cells}</row>`).join('')+tail;
+  const CELL=/<c r="([A-Z]+)(\d+)"[^>]*?(?:\/>|>[\s\S]*?<\/c>)/g;
+  const styles=cells=>{const s={};cells.replace(/<c r="([A-Z]+)\d+"([^>]*?)(?:\/>|>)/g,(m,c,at)=>{const v=at.match(/\bs="(\d+)"/);if(v)s[c]=v[1];return''});return s};
+  const stripCols=(cells,cols)=>cells.replace(CELL,(m,c)=>cols.includes(c)?'':m);
+  const fixShared=xml=>{const masters=new Set();xml.replace(/<f t="shared"[^>]*\bref="[^"]*"[^>]*\bsi="(\d+)"|<f t="shared"[^>]*\bsi="(\d+)"[^>]*\bref="/g,(m,a,b)=>{masters.add(a||b);return''});
+    return xml.replace(/<f t="shared"(?![^>]*\bref=)[^>]*\bsi="(\d+)"[^>]*\/>/g,(m,si)=>masters.has(si)?m:'')};
+  const ser0=excelSerial(month+'-01'),ser1=excelSerial(shiftMonth(month,1)+'-01'),mm=+month.slice(5);
+  const cols='ABCDEFGHIJKLMN'.split('');
+  /* 1) 작업현황(입력시트): 마지막 작업 행 아래에 이번 달 행 추가 */
+  let sIn=await rd(pIn);const R=rowsOf(sIn);let last=2,lastRow=null;
+  R.list.forEach(w=>{const a=w.cells.match(/<c r="A\d+"[^>]*?(?:\/>|>([\s\S]*?)<\/c>)/);const v=a&&a[1]&&a[1].match(/<v>([^<]+)<\/v>/);if(w.r>2&&v){if(w.r>last){last=w.r;lastRow=w}const n=+v[1];if(n>=ser0&&n<ser1)throw new Error(`이 파일에는 이미 ${mm}월 작업이 들어 있습니다. 전월(${+shiftMonth(month,-1).slice(5)}월) 현황 파일을 골라 주세요.`)}});
+  if(!lastRow)throw new Error('입력시트에서 작업 행을 찾지 못했습니다.');
+  const st=styles(lastRow.cells);['M','N'].forEach(c=>{if(!st[c])st[c]=st.L});
+  const start=last+1,end=last+rows.length;
+  R.list.forEach(w=>{if(w.r>last)w.cells=stripCols(w.cells,cols)});
+  const C=(c,r,inner,t)=>`<c r="${c}${r}"${st[c]?` s="${st[c]}"`:''}${t?` t="${t}"`:''}${inner?'>'+inner+'</c>':'/>'}`;
+  const S=(c,r,v)=>v===''||v==null?C(c,r):C(c,r,`<is><t xml:space="preserve">${X(v)}</t></is>`,'inlineStr');
+  const N=(c,r,v)=>v===''||v==null||!Number(v)?C(c,r):C(c,r,`<v>${Number(v)}</v>`);
+  const rowAt=lastRow.at.replace(/\br="\d+"/,'').replace(/\bspans="[^"]*"/,'');
+  rows.forEach((t,i)=>{const r=start+i;
+    const cells=C('A',r,`<v>${excelSerial(t.date)}</v>`)+S('B',r,t.type)+S('C',r,t.code)+S('D',r,t.name)+N('E',r,t.qty)+N('F',r,t.male)+N('G',r,t.female)
+      +C('H',r,`<f>+F${r}+G${r}</f>`)+N('I',r,t.minutes)+C('J',r,`<f>IF(ISERROR(E${r}/I${r}),&quot; &quot;,(E${r}/I${r}))</f>`)+C('K',r,`<f>IFERROR(J${r}/H${r},&quot;&quot;)</f>`)
+      +S('L',r,noteOf(t))+S('M',r,t.serialFrom)+S('N',r,t.serialTo);
+    const w=R.list.find(x=>x.r===r);if(w)w.cells=cells+w.cells;else R.list.push({r,at:` r="${r}"`+rowAt,cells})});
+  R.list=R.list.filter(w=>w.r<=end||w.cells.trim());
+  sIn=fixShared(joinRows(R));
+  const m1=sIn.match(/SUBTOTAL\(9,E(\d+):E\d+\)/),old=m1?+m1[1]:0;
+  sIn=sIn.replace(/(SUBTOTAL\(\d+,[A-Z])\d+(:[A-Z]\d+\))/g,`$1${start}$2`).replace(/(<c r="[EJ]1"[^>]*>\s*<f>SUBTOTAL[^<]*<\/f>)<v>[^<]*<\/v>/g,'$1')
+    .replace(/<dimension ref="A1:([A-Z]+)(\d+)"/,(m,c,n)=>`<dimension ref="A1:${c}${Math.max(+n,end)}"`)
+    .replace(/<autoFilter ref="A2:([A-Z]+)\d+"/,`<autoFilter ref="A2:$1${end}"`)
+    .replace(/topLeftCell="A\d+"/,`topLeftCell="A${Math.max(3,start-5)}"`).replace(/(<selection pane="bottomLeft") activeCell="[^"]*" sqref="[^"]*"/,`$1 activeCell="A${start}" sqref="A${start}"`);
+  zip.file(pIn,sIn);
+  wbx=wbx.replace(/(<definedName name="_xlnm\._FilterDatabase"[^>]*>'작업현황\(입력시트\)'!\$A\$2:\$[A-Z]+\$)\d+/,`$1${end}`);
+  /* 2) Summary: 제목 월 + 작업수량 합산 시작 행 */
+  let sSum=await rd(pSum);
+  sSum=sSum.replace(/<c r="A1"([^>]*?)(?:\/>|>[\s\S]*?<\/c>)/,(m,at)=>{const s=at.match(/\bs="(\d+)"/);return `<c r="A1"${s?` s="${s[1]}"`:''} t="inlineStr"><is><t>▣ ${String(mm).padStart(2,'0')}월 세트 작업 현황</t></is></c>`});
+  if(old)sSum=sSum.replace(new RegExp(`(\\$[CE]\\$)${old}:`,'g'),`$1${start}:`);
+  zip.file(pSum,sSum);
+  /* 3) 작업현황구분: 표1(상품코드·상품명·수량)을 이번 달 작업으로 */
+  let sGb=await rd(pGb);const G=rowsOf(sGb);const r2=G.list.find(w=>w.r===2);const gst=r2?styles(r2.cells):{};
+  G.list.forEach(w=>{if(w.r>=2)w.cells=stripCols(w.cells,['A','B','C'])});
+  const GC=(c,r,v,num)=>`<c r="${c}${r}"${gst[c]?` s="${gst[c]}"`:''}${v===''||v==null?'/>':num?`><v>${Number(v)}</v></c>`:` t="inlineStr"><is><t xml:space="preserve">${X(v)}</t></is></c>`}`;
+  const n=Math.max(rows.length,1);
+  for(let i=0;i<n;i++){const t=rows[i]||{},r=i+2,cells=GC('A',r,t.code)+GC('B',r,t.name)+GC('C',r,t.qty,1);const w=G.list.find(x=>x.r===r);if(w)w.cells=cells+w.cells;else G.list.push({r,at:` r="${r}"`,cells})}
+  G.list=G.list.filter(w=>w.r<=n+1||w.cells.trim());
+  zip.file(pGb,fixShared(joinRows(G)));
+  const gRelP=pGb.replace(/([^/]+)$/,'_rels/$1.rels');
+  if(zip.file(gRelP)){const gr=relMap(await rd(gRelP));for(const k in gr)if(/\/table$/.test(gr[k].ty)){const tp=abs(pGb,gr[k].t);zip.file(tp,(await rd(tp)).replace(/ref="A1:C\d+"/g,`ref="A1:C${n+1}"`))}}
+  /* 4) 열 때 다시 계산·피벗 새로고침, 계산 순서 파일은 지움(행이 바뀌어 맞지 않음) */
+  for(const p of Object.keys(zip.files).filter(p=>/^xl\/pivotCache\/pivotCacheDefinition\d+\.xml$/.test(p))){const x=await rd(p);if(!/refreshOnLoad=/.test(x))zip.file(p,x.replace('<pivotCacheDefinition ','<pivotCacheDefinition refreshOnLoad="1" '))}
+  wbx=wbx.replace(/<calcPr\b([^>]*?)\/>/,(m,a)=>`<calcPr${a.replace(/\s*fullCalcOnLoad="[^"]*"/,'')} fullCalcOnLoad="1"/>`);
+  zip.file('xl/workbook.xml',wbx);
+  if(zip.file('xl/calcChain.xml')){zip.remove('xl/calcChain.xml');
+    zip.file('[Content_Types].xml',(await rd('[Content_Types].xml')).replace(/<Override[^>]*PartName="\/xl\/calcChain\.xml"[^>]*\/>/,''));
+    zip.file('xl/_rels/workbook.xml.rels',(await rd('xl/_rels/workbook.xml.rels')).replace(/<Relationship[^>]*Target="[^"]*calcChain\.xml"[^>]*\/>/,''))}
+  return zip.generateAsync({type:'blob',compression:'DEFLATE',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+function simpleBook(rows){
   const wb=XLSX.utils.book_new();
   const ws={};const H=['','작업구분','상품코드','상품명\n(작업세부내역)','작업\n수량','남','여','합계','작업시간\n(분)','생산성\n(분)','1인당 \n생산성\n(분)',co.serial?'비고':'비고1',co.serial?'시리얼넘버':'',''];
   'ABCDEFGHIJKLMN'.split('').forEach((c,i)=>ws[c+'1']={t:'s',v:H[i]});
@@ -1137,27 +1219,8 @@ $('#exXlsx').addEventListener('click',async()=>{
   const supRows=[['날짜','업체','인원','내용','시작','종료','휴식(회)','점심','지원시간(분)','인원×시간(분)']];
   Object.values(tasks).filter(t=>t.month===exMonth&&isSup(t)).sort((a,b)=>(a.date+(a.start||'')).localeCompare(b.date+(b.start||''))).forEach(t=>supRows.push([t.date,t.supCo||'',n0(t.people)||'',t.name||'',t.start||'',t.end||'',n0(t.breaks)||'',t.lunch?'Y':'',supMins(t),supMins(t)!==''?supMins(t)*(n0(t.people)||1):'']));
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(supRows),'타업체지원');
-  const buf=XLSX.write(wb,{type:'array',bookType:'xlsx'});
-  try{await dl.save({filename:`${exMonth} ${co.short} 작업일지_입력시트.xlsx`,data:new Blob([buf])});toast('파일을 저장했습니다. 현황 엑셀에 넣은 뒤 "반영 완료로 표시"를 눌러 주세요.')}
-  catch(e){if(e?.code==='declined')return;if(e?.code==='rate_limited'){toast('저장 창이 이미 열려 있습니다.');return}toast('이 화면에서는 파일을 저장할 수 없습니다. 붙여넣기용 복사를 이용하세요.')}
-});
-$('#exCopy').addEventListener('click',()=>{
-  const rows=exportRows().map(x=>x[1]);
-  const c=v=>String(v??'').replace(/[\t\n]/g,' ');
-  const tsv=rows.map(t=>[t.date,t.type,t.code,t.name,t.qty,t.male||'',t.female||'','=INDEX(F:F,ROW())+INDEX(G:G,ROW())',t.minutes,
-    '=IFERROR(INDEX(E:E,ROW())/INDEX(I:I,ROW())," ")','=IFERROR(INDEX(J:J,ROW())/INDEX(H:H,ROW()),0)',noteOf(t),t.serialFrom,t.serialTo].map(c).join('\t')).join('\r\n');
-  const done=()=>toast(`${rows.length}행을 복사했습니다. 입력시트 마지막 행 아래 A열에 붙여넣으세요.`);
-  const fallback=()=>{const ta=document.createElement('textarea');ta.value=tsv;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();let ok=false;try{ok=document.execCommand('copy')}catch{}ta.remove();ok?done():toast('복사하지 못했습니다. 엑셀 파일 받기를 이용하세요.')};
-  try{navigator.clipboard.writeText(tsv).then(done,fallback)}catch{fallback()}
-});
-$('#exMark').addEventListener('click',async e=>{
-  const b=e.currentTarget;const rows=exportRows();if(!rows.length||!db)return;
-  if(!b.classList.contains('armed')){b.classList.add('armed');b.textContent=`${rows.length}건 반영 완료로 표시할까요?`;setTimeout(()=>{b.classList.remove('armed');b.textContent='반영 완료로 표시'},4000);return}
-  b.classList.remove('armed');b.disabled=true;b.textContent='표시 중…';
-  let ok=0;const at=Date.now();
-  for(const[id,t]of rows){try{await db.doc(P('tasks')+'/'+id).update({exported:true,exportedAt:at});tasks[id]={...t,exported:true,exportedAt:at};ok++}catch(er){toast(errMsg(er));break}}
-  b.textContent='반영 완료로 표시';toast(`${ok}건을 반영 완료로 표시했습니다.`);renderExport();renderTasks();
-});
+  return new Blob([XLSX.write(wb,{type:'array',bookType:'xlsx'})]);
+}
 
 /* ---------- settings ---------- */
 $('#myName').value=lsGet('myName');
