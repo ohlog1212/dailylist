@@ -380,8 +380,7 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
           <h2>근무현황</h2>
           <div class="body">
             <div class="fgrid">
-              <label class="f">직원<input class="in" id="d-staff" data-f="staff" placeholder="예: 서승미"></label>
-              <label class="f">일용직<input class="in" id="d-dayWorkers" data-f="dayWorkers" placeholder="이름 또는 인원"></label>
+              <label class="f">일용직 인원 (명)<input class="in" id="d-dayWorkers" data-f="dayWorkers" type="text" inputmode="numeric" placeholder="예: 3"></label>
             </div>
           </div>
         </div>
@@ -686,7 +685,7 @@ function setVal(el,v){if(el&&el!==document.activeElement){const s=v??'';if(el.va
 
 function renderDay(){
   $('#dateInput').value=curDate;$('#dow').textContent=dowOf(curDate)+'요일';
-  ['staff','dayWorkers','memo'].forEach(f=>setVal($('#d-'+f),dayLocal[f]));
+  ['dayWorkers','memo'].forEach(f=>setVal($('#d-'+f),dayLocal[f]));
   matKeys().forEach(f=>setVal($('#m-'+f),dayLocal.mat[f]));
   const list=$('#shipList');
   const rows=$$('.ship',list);
