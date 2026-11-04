@@ -370,21 +370,13 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
       <button class="iconbtn" id="nextDay" aria-label="다음날">›</button>
       <span class="dow" id="dow"></span>
       <button class="btn small" id="todayBtn">오늘</button>
+      <label class="row" style="gap:4px;font-size:13px;font-weight:600;color:var(--muted)">일용직<input class="in" id="d-dayWorkers" type="text" inputmode="numeric" placeholder="0" style="width:46px;height:34px;padding:0 6px;text-align:center">명</label>
       <span id="dayStatus" class="pill">작성 전</span>
     </div>
     <button class="stockalert" id="stockAlert" type="button" hidden></button>
 
     <div class="cols" id="daySection">
       <div class="stack">
-        <div class="sheet">
-          <h2>근무현황</h2>
-          <div class="body">
-            <div class="fgrid">
-              <label class="f">일용직 인원 (명)<input class="in" id="d-dayWorkers" data-f="dayWorkers" type="text" inputmode="numeric" placeholder="예: 3"></label>
-            </div>
-          </div>
-        </div>
-
         <div class="sheet">
           <h2>출고 · 피킹 <span class="sub">차수별 건수와 작업시간</span></h2>
           <div class="body">
@@ -777,6 +769,8 @@ $('#daySection').addEventListener('input',e=>{
   else dayLocal[f]=v;
   saveDay();renderDayTotals();
 });
+/* 일용직 인원 — 날짜 줄(오늘 버튼 옆)에 숫자만 */
+$('#d-dayWorkers').addEventListener('input',e=>{const t=e.target;t.value=t.value.replace(/\D/g,'');dayLocal.dayWorkers=t.value;saveDay()});
 $('#daySection').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||b.closest('#taskList'))return;
   if(b.dataset.act==='shipNow'){const r=b.closest('.ship');const i=+r.dataset.i;const s=dayLocal.ships[i];const n=nowHM();s[b.dataset.f]=n;
