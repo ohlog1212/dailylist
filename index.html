@@ -1873,9 +1873,9 @@ const PCOS=[
   {id:'lr',full:'엘알헬스앤뷰티',short:'엘알',src:'lr_days',own:'작업일지 연동',boxes:[...B4,['box5','5번박스'],['boxEtc','기타']]},
   {id:'newu',full:'뉴유라이프코리아',short:'뉴유라이프',own:'신동준 사원',boxes:[['s','소'],['m','중'],['l','대'],['new4','신 4호'],['old1','기존 1호'],['old2','기존 2호'],['old3','기존 3호'],['old4','기존 4호'],['etc','기타']]},
   {id:'insan',full:'인산헬스케어',short:'인산',own:'신동준 사원',boxes:[...B4,['etc','기타']]},
-  {id:'healy',full:'힐리월드코리아',short:'힐리',own:'백업 (담당자 부재)',boxes:[...B4,['etc','기타']]},
+  {id:'healy',full:'힐리월드코리아',short:'힐리',src:'hl_days',own:'작업일지 연동',boxes:[...B4,['boxEtc','기타']]},
 ];
-let pDate=todayStr(),pMonth=pDate.slice(0,7),pDocs={},pJ={days:{},lr_days:{}},pUnsubs=[],pKey='';
+let pDate=todayStr(),pMonth=pDate.slice(0,7),pDocs={},pJ={days:{},lr_days:{},hl_days:{}},pUnsubs=[],pKey='';
 const pId=(date,c)=>date+'_'+c;
 function pSub(){
   if(!db||pKey===pMonth)return;
@@ -1885,7 +1885,7 @@ function pSub(){
     for(const id in pDocs){if(savers['parcel/'+id]?.pending())n[id]=pDocs[id]}
     pDocs=n;renderParcel();
   },e=>toast(errMsg(e))));
-  ['days','lr_days'].forEach(c=>pUnsubs.push(db.collection(c).where('month','==',m).limit(1000).onSnapshot(s=>{
+  ['days','lr_days','hl_days'].forEach(c=>pUnsubs.push(db.collection(c).where('month','==',m).limit(1000).onSnapshot(s=>{
     if(pKey!==m)return;const n={};s.docs.forEach(d=>n[d.id]=d.data());pJ[c]=n;renderParcel();
   },e=>toast(errMsg(e)))));
 }
@@ -1949,7 +1949,7 @@ function renderParcelTotals(){
 function pDates(){
   const s=new Set();
   Object.values(pDocs).forEach(d=>{if(d.month===pMonth)s.add(d.date)});
-  ['days','lr_days'].forEach(c=>Object.values(pJ[c]).forEach(d=>{if(d.month===pMonth&&d.mat&&Object.values(d.mat).some(v=>n0(v)))s.add(d.date)}));
+  ['days','lr_days','hl_days'].forEach(c=>Object.values(pJ[c]).forEach(d=>{if(d.month===pMonth&&d.mat&&Object.values(d.mat).some(v=>n0(v)))s.add(d.date)}));
   return [...s].sort();
 }
 function renderParcelMonth(){
