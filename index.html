@@ -266,9 +266,9 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
 .cocard.wide{min-height:0}
 .cocard[data-co="parcel"]{--cc:var(--pc-parcel)}
 /* 택배 박스수량 */
-:root{--pc-amare:#1d5a86;--pc-lr:#23705c;--pc-newu:#a2610b;--pc-insan:#a23b4a;--pc-healy:#6a4ea1;--pc-parcel:#4b5563}
-@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--pc-amare:#6aa8d6;--pc-lr:#6cc3a6;--pc-newu:#e3a54e;--pc-insan:#ec8f9b;--pc-healy:#b39ae6;--pc-parcel:#aab4c0}}
-:root[data-theme="dark"]{--pc-amare:#6aa8d6;--pc-lr:#6cc3a6;--pc-newu:#e3a54e;--pc-insan:#ec8f9b;--pc-healy:#b39ae6;--pc-parcel:#aab4c0}
+:root{--pc-amare:#6b2f63;--pc-lr:#23705c;--pc-newu:#1d5a86;--pc-insan:#a23b4a;--pc-healy:#2563eb;--pc-parcel:#4b5563}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--pc-amare:#d39acb;--pc-lr:#6cc3a6;--pc-newu:#6aa8d6;--pc-insan:#ec8f9b;--pc-healy:#b39ae6;--pc-parcel:#aab4c0}}
+:root[data-theme="dark"]{--pc-amare:#d39acb;--pc-lr:#6cc3a6;--pc-newu:#6aa8d6;--pc-insan:#ec8f9b;--pc-healy:#b39ae6;--pc-parcel:#aab4c0}
 :root[data-co="parcel"]{--accent:#4b5563;--accent-soft:#e8ebef}
 @media (prefers-color-scheme: dark){ :root[data-co="parcel"]:not([data-theme="light"]){--accent:#aab4c0;--accent-soft:#252d33;--on-accent:#12181a}}
 :root[data-theme="dark"][data-co="parcel"]{--accent:#aab4c0;--accent-soft:#252d33;--on-accent:#12181a}
@@ -337,7 +337,7 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
     <h2 class="home-title">어느 업체 작업일지를 쓸까요?</h2>
     <div class="cogrid" id="coCards"></div>
     <h2 class="home-title" style="font-size:16px;margin-top:6px">통합피킹존 (G동 2층)</h2>
-    <button class="cocard wide" data-co="parcel" id="parcelCard" type="button"><span class="mk">G동 2층</span><span class="nm">택배 박스수량</span><span class="ds">아마레 · 엘알 · 뉴유라이프코리아 · 인산헬스케어 · 힐리월드코리아 5개 업체를 한 화면에서</span></button>
+    <button class="cocard wide" data-co="parcel" id="parcelCard" type="button"><span class="mk">G동 2층</span><span class="nm">택배 박스수량</span><span class="ds">아마레 · 뉴유라이프코리아 · 힐리월드코리아 · 엘알 4개 업체를 한 화면에서</span></button>
     <p class="note">위쪽의 업체 버튼으로 언제든 다른 업체 작업일지로 옮겨갈 수 있습니다. 업체마다 일지·가공작업·품목이 따로 저장됩니다.</p>
   </section>
 
@@ -352,6 +352,7 @@ body.mode-parcel .tabs,body.mode-parcel [id^="tab-"]:not(#tab-parcel){display:no
       <label class="row" style="font-size:13px;font-weight:600;color:var(--muted)">작성자<input class="in" id="p-writer" data-pf="writer" style="width:120px;height:38px"></label>
     </div>
     <div class="psum" id="pSum"></div>
+    <div class="row" style="justify-content:flex-end;margin:-6px 0 12px"><button class="btn small primary" id="pCopy" type="button" title="카톡에 붙여넣기 좋게 날짜·업체별 박스 수량을 복사">총 수량 복사</button></div>
     <div class="pgrid" id="pCards"></div>
     <div class="cols" style="margin-top:14px">
       <div class="sheet"><h2>테이프 사용량</h2><div class="tablewrap"><table class="ptab" id="pTape"></table></div></div>
@@ -1880,10 +1881,9 @@ document.addEventListener('click',e=>{const b=e.target.closest('#coCards [data-c
 const B4=[['box1','1번박스'],['box2','2번박스'],['box3','3번박스'],['box4','4번박스']];
 const PCOS=[
   {id:'amare',full:'아마레코리아',short:'아마레',src:'days',own:'작업일지 연동',boxes:[...B4,['boxEtc','기타']]},
-  {id:'lr',full:'엘알헬스앤뷰티',short:'엘알',src:'lr_days',own:'작업일지 연동',boxes:[...B4,['box5','5번박스'],['boxEtc','기타']]},
-  {id:'newu',full:'뉴유라이프코리아',short:'뉴유라이프',src:'nu_days',own:'작업일지 연동',boxes:[['s','소'],['m','중'],['l','대'],['new4','신 4호'],['old1','기존 1호'],['old2','기존 2호'],['old3','기존 3호'],['old4','기존 4호'],['etc','기타']]},
-  {id:'insan',full:'인산헬스케어',short:'인산',own:'신동준 사원',boxes:[...B4,['etc','기타']]},
+  {id:'newu',full:'뉴유라이프코리아',short:'뉴유',src:'nu_days',own:'작업일지 연동',boxes:[['s','소'],['m','중'],['l','대'],['new4','신 4호'],['old1','기존 1호'],['old2','기존 2호'],['old3','기존 3호'],['old4','기존 4호'],['etc','기타']]},
   {id:'healy',full:'힐리월드코리아',short:'힐리',src:'hl_days',own:'작업일지 연동',boxes:[...B4,['boxEtc','기타']]},
+  {id:'lr',full:'엘알헬스앤뷰티',short:'엘알',src:'lr_days',own:'작업일지 연동',boxes:[...B4,['box5','5번박스'],['boxEtc','기타']]},
 ];
 let pDate=todayStr(),pMonth=pDate.slice(0,7),pDocs={},pJ={days:{},lr_days:{},hl_days:{},nu_days:{}},pUnsubs=[],pKey='';
 const pId=(date,c)=>date+'_'+c;
@@ -1956,6 +1956,13 @@ function renderParcelTotals(){
   });
   $('#pSum').innerHTML=PCOS.map(pc=>`<div class="s" style="--pc:var(--pc-${pc.id})"><span>${esc(pc.short)}</span><b>${pTot(pc,pDate)}</b></div>`).join('')+`<div class="s all"><span>통합 합계</span><b>${all}</b></div>`;
 }
+/* 총 수량 복사: 11/17 ↵ 아마레 42 ↵ 뉴유 102 … (카톡 붙여넣기용) */
+$('#pCopy').addEventListener('click',()=>{
+  const [,m,d]=pDate.split('-').map(Number);const txt=[m+'/'+d,...PCOS.map(pc=>pc.short+' '+pTot(pc,pDate))].join('\n');
+  const done=()=>toast('복사했습니다. 카톡에 붙여넣으세요.');
+  const fb=()=>{const ta=document.createElement('textarea');ta.value=txt;ta.style.cssText='position:fixed;opacity:0';document.body.appendChild(ta);ta.select();let ok=false;try{ok=document.execCommand('copy')}catch{}ta.remove();ok?done():toast('복사하지 못했습니다.')};
+  try{navigator.clipboard.writeText(txt).then(done,fb)}catch{fb()}
+});
 function pDates(){
   const s=new Set();
   Object.values(pDocs).forEach(d=>{if(d.month===pMonth)s.add(d.date)});
