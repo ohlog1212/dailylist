@@ -598,7 +598,7 @@ const COMPANIES=[
   /* 뉴유라이프: 스티커·세트 두 가지, 박스는 택배수량 탭과 같은 구성, 차수별 박스 칸 없음 */
   {id:'newu',name:'뉴유라이프코리아',short:'뉴유',mark:'NEWU',prefix:'nu_',
    types:['라벨','세트'],
-   boxes:[['s','소'],['m','중'],['l','대'],['new4','신 4호'],['old1','기존 1호'],['old2','기존 2호'],['old3','기존 3호'],['old4','기존 4호'],['etc','기타']],
+   boxes:[['s','소'],['m','중'],['l','대'],['new4','아웃박스'],['old2','기존 2호'],['old3','기존 3호'],['old4','기존 4호'],['etc','기타']],
    mats:[['tape','테이프']],
    serial:false,helper:false,shipBoxes:false,desc:'스티커라벨 · 세트구성'},
 ];
@@ -1236,7 +1236,30 @@ function prDates(){
   Object.values(tasks).forEach(t=>{if(t.month===exMonth&&t.date)ds.add(t.date)});
   return [...ds].sort();
 }
+/* 뉴유라이프: 엑셀 「업무일지 및 안전관리 일지」 뉴유 시트 양식 (차수당 한 줄) */
+function prPageNu(dt){
+  const d=days[dt]||emptyDay(dt),ts=Object.values(tasks).filter(t=>t.date===dt).sort((a,b)=>(a.start||'').localeCompare(b.start||'')||(a.createdAt||0)-(b.createdAt||0));
+  const E=v=>esc(v==null?'':String(v)),[y,m,dd]=dt.split('-').map(Number),ships=d.ships||[],mat=d.mat||{};
+  const right=[...co.boxes.map(([k,l])=>[l,n0(mat[k])]),['테이프',n0(mat.tape)]];
+  const n=Math.max(8,ships.length,right.length);let rows='';
+  for(let i=0;i<n;i++){const s=ships[i],b=right[i];
+    rows+=`<tr><td class="c">${s?E(s.round||(i+1)+'차'):''}</td><td class="c b">${s?E(s.count):''}</td><td class="c">${s&&(s.start||s.end)?`${E(s.start||'')} / ${E(s.end||'')}`:'/'}</td><td class="c">${s?[n0(s.add)||'',n0(s.exch)?'맞'+n0(s.exch):''].filter(Boolean).join(' / '):''}</td><td class="c">${s&&n0(s.cancel)?n0(s.cancel):''}</td><td class="c lab">${b?E(b[0]):''}</td><td class="c b">${b&&b[1]?b[1]:''}</td></tr>`}
+  const boxSum=co.boxes.reduce((a,[k])=>a+n0(mat[k]),0);
+  const tk=ts.map(t=>isSup(t)?{nm:`${t.supCo||'타업체'} 지원`,s:t.start,e:t.end,p:n0(t.people),q:'',note:''}:{nm:t.name||t.code,s:t.start,e:t.end,p:n0(t.male)+n0(t.female),q:t.qty,note:[tl(t.type),t.note].filter(Boolean).join(' · ')});
+  let trs='';for(let i=0;i<Math.max(7,tk.length);i++){const t=tk[i];trs+=t?`<tr><td>${E(t.nm)}</td><td class="c">${t.s||t.e?`${E(t.s||'')} / ${E(t.e||'')}`:'/'}</td><td class="c">${t.p||''}</td><td class="c"></td><td class="c b">${t.q?E(t.q):''}</td><td class="sm2">${E(t.note)}</td></tr>`:'<tr><td></td><td class="c">/</td><td></td><td></td><td></td><td></td></tr>'}
+  return `<div class="pg"><table class="hd"><tr><td class="tt" rowspan="2">뉴유라이프코리아</td><td class="ap">담당자</td><td class="ap">관리자</td><td class="ap">책임자</td></tr><tr><td class="sg">${d.confirmed?.by?E(d.confirmed.by):''}</td><td class="sg"></td><td class="sg"></td></tr></table>
+  <div class="dt">날짜 : &nbsp; ${y} 년 &nbsp; ${m} 월 &nbsp; ${dd} 일 ( ${dowOf(dt)} )</div>
+  <table class="g"><tr><th>근무현황</th><th>직원</th><td style="width:22%" class="c">${E(d.staff||'')}</td><th>일용직</th><td class="c">${n0(d.dayWorkers)?n0(d.dayWorkers)+'명':E(d.dayWorkers||'')}</td><th>휴가자</th><td></td><th>PLT</th><td></td></tr></table>
+  <table class="g"><colgroup><col style="width:12%"><col style="width:9%"><col style="width:30%"><col style="width:9%"><col style="width:7%"><col style="width:16%"><col style="width:17%"></colgroup>
+  <tr><th>차수 /<br>backorder</th><th>건수</th><th>작업시간 / 주문번호</th><th>추가<br>/맞교환</th><th>취소</th><th colspan="2">출고 박스 수량</th></tr>${rows}
+  <tr><th>합계수량</th><td class="c b">${shipTotal(ships)||''}</td><td></td><td></td><td></td><th>합계</th><td class="c b">${boxSum||''}</td></tr></table>
+  <table class="g"><colgroup><col style="width:21%"><col style="width:30%"><col style="width:8%"><col style="width:8%"><col style="width:11%"><col style="width:22%"></colgroup>
+  <tr><th colspan="6" class="sec">작업현황 ( SET . 포장작업, 스티커 작업 및 기타작업 )</th></tr>
+  <tr><th rowspan="2">작업내용</th><th rowspan="2">작업시간</th><th colspan="2" style="height:5mm">작업인원</th><th rowspan="2">수 량</th><th rowspan="2">비 고</th></tr><tr><th style="height:5mm;font-size:9px">직원</th><th style="height:5mm;font-size:9px">일용직</th></tr>${trs}</table>
+  <table class="g memo"><tr><td><b>*특이사항</b><div class="mt">${E(d.memo||'')}</div></td></tr></table></div>`;
+}
 function prPage(dt){
+  if(co.id==='newu')return prPageNu(dt);
   const d=days[dt]||emptyDay(dt),ts=Object.values(tasks).filter(t=>t.date===dt).sort((a,b)=>(a.start||'').localeCompare(b.start||'')||(a.createdAt||0)-(b.createdAt||0));
   const E=v=>esc(v==null?'':String(v)),[y,m,dd]=dt.split('-').map(Number),ships=d.ships||[],bx=co.boxes,mat=d.mat||{};
   const tm=(s,e)=>s||e?`${E(s||'')} / ${E(e||'')}`:'/';
@@ -1266,7 +1289,7 @@ table{width:100%;border-collapse:collapse;table-layout:fixed}.g{margin-top:3mm;b
 .hd td{border:1px solid #444;text-align:center}.hd .tt{border:0;font-size:24px;font-weight:800;text-align:center;width:62%}.hd .ap{height:6mm;font-size:10px;width:12.6%}.hd .sg{height:15mm;font-size:12px}
 .dt{text-align:right;margin-top:2mm;font-size:11.5px;font-weight:600}.c{text-align:center}.b{font-size:13px;font-weight:700}.sm{font-size:8.5px;color:#333;font-weight:500}.lab{font-weight:600}
 .t .nm{font-size:10.5px}.kd{display:inline-block;font-size:8.5px;border:1px solid #666;border-radius:3px;padding:0 3px;margin-right:2px}.sec{height:7.5mm;font-size:11.5px}
-.memo td{height:34mm;vertical-align:top;padding:4px 6px}.mt{white-space:pre-wrap;font-weight:500;margin-top:3px;font-size:11px}.ft{position:absolute;bottom:2mm;left:0;right:0;text-align:center;font-size:9px;color:#333}`;
+.sm2{font-size:9.5px;font-weight:500}.memo td{height:34mm;vertical-align:top;padding:4px 6px}.mt{white-space:pre-wrap;font-weight:500;margin-top:3px;font-size:11px}.ft{position:absolute;bottom:2mm;left:0;right:0;text-align:center;font-size:9px;color:#333}`;
 function renderPrint(){
   if($('#tab-print').hidden)return;
   $('#prMonth').value=exMonth;
@@ -1881,7 +1904,7 @@ document.addEventListener('click',e=>{const b=e.target.closest('#coCards [data-c
 const B4=[['box1','1번박스'],['box2','2번박스'],['box3','3번박스'],['box4','4번박스']];
 const PCOS=[
   {id:'amare',full:'아마레코리아',short:'아마레',src:'days',own:'작업일지 연동',boxes:[...B4,['boxEtc','기타']]},
-  {id:'newu',full:'뉴유라이프코리아',short:'뉴유',src:'nu_days',own:'작업일지 연동',boxes:[['s','소'],['m','중'],['l','대'],['new4','신 4호'],['old1','기존 1호'],['old2','기존 2호'],['old3','기존 3호'],['old4','기존 4호'],['etc','기타']]},
+  {id:'newu',full:'뉴유라이프코리아',short:'뉴유',src:'nu_days',own:'작업일지 연동',boxes:[['s','소'],['m','중'],['l','대'],['new4','아웃박스'],['old2','기존 2호'],['old3','기존 3호'],['old4','기존 4호'],['etc','기타']]},
   {id:'healy',full:'힐리월드코리아',short:'힐리',src:'hl_days',own:'작업일지 연동',boxes:[...B4,['boxEtc','기타']]},
   {id:'lr',full:'엘알헬스앤뷰티',short:'엘알',src:'lr_days',own:'작업일지 연동',boxes:[...B4,['box5','5번박스'],['boxEtc','기타']]},
 ];
