@@ -595,12 +595,12 @@ const COMPANIES=[
    serial:false,helper:false,ledger:true,desc:'스티커 · 포장 · 세트 · 기타',
    /* 작업구분별로 고를 수 있는 상품을 정해 둔 경우 (실링은 디바이스·코일 7종만) */
    typeItems:{'실링':['02-006-209-01','02-006-120-05','02-004-002-03','02-004-002-01','HEALY-3-0-KR','REF 0010-MH','REF 0009-N4'],'라벨':'stock'}},
-  /* 뉴유라이프: 스티커·세트 두 가지, 박스는 택배수량 탭과 같은 구성, 차수별 박스 칸 없음 */
+  /* 뉴유라이프: 스티커·세트 두 가지, 박스는 택배수량 탭과 같은 구성 */
   {id:'newu',name:'뉴유라이프코리아',short:'뉴유',mark:'NEWU',prefix:'nu_',
    types:['라벨','세트'],
    boxes:[['s','소'],['m','중'],['l','대'],['new4','아웃박스'],['old2','기존 2호'],['old3','기존 3호'],['old4','기존 4호'],['etc','기타']],
    mats:[['tape','테이프']],
-   serial:false,helper:false,shipBoxes:false,desc:'스티커라벨 · 세트구성'},
+   serial:false,helper:false,desc:'스티커라벨 · 세트구성'},
 ];
 let co=null;
 const P=name=>(co?co.prefix:'')+name;                 // 컬렉션 이름
